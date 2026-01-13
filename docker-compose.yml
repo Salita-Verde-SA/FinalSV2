@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # =========================================
+  # 1. BASE DE DATOS (PostgreSQL)
+  # =========================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: ecommerce_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ecommerce_prod
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # =========================================
+  # 2. CACHÉ (Redis)
+  # =========================================
+  redis:
+    image: redis:alpine
+    container_name: ecommerce_redis
+    command:
+    - "redis-server"
+    - "--maxmemory"
+    - "256mb"                      # Límite de memoria
+    - "--maxmemory-policy"
+    - "allkeys-lru"                # Política de evicción (LRU)
+    - "--appendonly"
+    - "yes"                        # Persistencia AOF
+    volumes:
+    - redis_data_prod:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+
+  # =========================================
+  # 3. BACKEND (FastAPI)
+  # =========================================
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ecommerce_api
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=ecommerce_prod
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - REDIS_HOST=redis
+      # CORS configurado para permitir el frontend
+      # - CORS_ORIGINS=http://localhost:3000,http://localhost
+      - CORS_ORIGINS=*
+      
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health_check/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # =========================================
+  # 4. FRONTEND (React + Nginx)
+  # =========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # Aquí definimos a dónde debe apuntar el Frontend para buscar datos.
+      # Como React se ejecuta en el navegador del usuario, usamos localhost.
+      args:
+        - VITE_API_URL=http://localhost:8000
+    container_name: ecommerce_frontend
+    ports:
+      - "3000:80"  # Accesible en http://localhost:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  redis_data_prod:
+
+networks:
+  app-network:
+    driver: bridge
