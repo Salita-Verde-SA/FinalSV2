@@ -1,88 +1,57 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, ShieldX, Lock } from 'lucide-react';
+import { Home, ShieldBan, XOctagon } from 'lucide-react';
 
 const AccessDenied = () => {
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
-      {/* Efectos de fondo */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/3 w-80 h-80 bg-yellow-500/10 rounded-full blur-[150px]"></div>
-        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 bg-primary/10 rounded-full blur-[150px]"></div>
-      </div>
-
+    <div className="min-h-screen bg-surface flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Fondo técnico */}
+      <div className="absolute inset-0 bg-topo-pattern opacity-5 pointer-events-none"></div>
+      
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="text-center relative z-10 max-w-lg"
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="text-center relative z-10 max-w-lg bg-white p-12 border-2 border-red-500 shadow-2xl"
       >
-        {/* Icono */}
+        <div className="absolute top-0 left-0 w-full h-2 bg-red-500"></div>
+        
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="mb-8"
+          className="mb-6 inline-flex"
         >
-          <div className="inline-flex items-center justify-center w-24 h-24 bg-yellow-500/10 rounded-full border border-yellow-500/20">
-            <ShieldX size={48} className="text-yellow-400" />
+          <div className="p-4 bg-red-500 text-white transform -skew-x-12">
+            <ShieldBan size={64} className="transform skew-x-12" />
           </div>
         </motion.div>
 
-        {/* Código */}
-        <motion.h1 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="text-7xl md:text-8xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 via-primary to-yellow-500 bg-300% animate-gradient mb-4"
-        >
+        <h1 className="text-8xl font-black text-text-primary italic tracking-tighter leading-none mb-2">
           403
-        </motion.h1>
+        </h1>
+        
+        <div className="bg-red-100 text-red-600 font-bold uppercase tracking-widest text-sm py-1 mb-6 inline-block px-4 transform -skew-x-12">
+           <span className="transform skew-x-12 block">Acceso Restringido</span>
+        </div>
 
-        {/* Mensaje */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-        >
-          <h2 className="text-2xl md:text-3xl font-bold text-text-primary mb-4 flex items-center justify-center gap-2">
-            <Lock size={24} className="text-yellow-400" />
-            Acceso Restringido
-          </h2>
-          <p className="text-text-secondary mb-8 leading-relaxed">
-            No tienes los permisos necesarios para acceder a esta sección.
-            <br className="hidden md:block" />
-            Esta área está reservada para administradores del sistema.
-          </p>
-        </motion.div>
+        <p className="text-text-secondary mb-8 font-medium">
+          Zona exclusiva para Comisarios Deportivos y Team Managers. <br/>
+          Tu licencia no tiene los permisos necesarios.
+        </p>
 
-        {/* Botón */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+        <Link 
+          to="/"
+          className="inline-flex items-center gap-2 bg-text-primary hover:bg-black text-white font-black uppercase tracking-wider px-8 py-4 transition-all transform hover:-translate-y-1 hover:shadow-lg"
         >
-          <Link 
-            to="/"
-            className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-text-inverse font-bold px-8 py-3 rounded-xl transition-all shadow-lg shadow-primary/20 hover:scale-105"
-          >
-            <Home size={20} />
-            Volver al Inicio
-          </Link>
-        </motion.div>
-
-        {/* Código decorativo */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-          className="mt-12 font-mono text-xs text-text-muted"
-        >
-          <code className="bg-surface/50 px-3 py-2 rounded-lg border border-ui-border">
-            ACCESS::DENIED::ADMIN_REQUIRED
+          <Home size={18} />
+          Volver a Pits
+        </Link>
+        
+        <div className="mt-8 pt-6 border-t border-dashed border-ui-border">
+          <code className="text-[10px] font-mono text-text-muted bg-surface px-2 py-1">
+            ERROR::PERMISSION_DENIED::RIDER_UNAUTHORIZED
           </code>
-        </motion.div>
+        </div>
       </motion.div>
     </div>
   );

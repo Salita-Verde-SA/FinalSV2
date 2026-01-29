@@ -1,113 +1,131 @@
-// Ubicación: frontend/src/pages/Login.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Mail, Loader, Phone, AlertCircle, User, Bike } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { Shirt, ArrowRight, UserPlus, LogIn } from 'lucide-react';
+import { clientService } from '../services/clientService';
 
 const Login = () => {
-  const [isLogin, setIsLogin] = useState(true); // Estado para alternar vistas
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
-  
-  const login = useAuthStore(state => state.login);
-  const register = useAuthStore(state => state.register); // Asegúrate de que exista en tu store
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const navigate = useNavigate();
+  const setAuth = useAuthStore((state) => state.login);
+
+  const [formData, setFormData] = useState({ email: '', name: '', lastname: '', telephone: '' });
+
+  const handleChange = (e) => {
+    setFormData({...formData, [e.target.name]: e.target.value});
+    setError(''); setSuccess('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true); setError(''); setSuccess('');
     try {
       if (isLogin) {
-        await login(formData.email, formData.password);
+        const client = await clientService.findByEmail(formData.email);
+        if (!client) { setError('Email no registrado en el sistema'); return; }
+        setAuth(client);
+        if (client.email?.includes('admin')) { navigate('/admin'); } else { navigate('/'); }
       } else {
-        await register(formData);
+        const newClient = await clientService.create({ 
+          email: formData.email, name: formData.name, lastname: formData.lastname, telephone: formData.telephone
+        });
+        setSuccess('¡Registro exitoso! Preparando acceso...');
+        setTimeout(() => { setAuth(newClient); navigate('/'); }, 1500);
       }
-      navigate('/profile');
     } catch (err) {
-      alert(isLogin ? "Error al ingresar. Revisa tus credenciales." : "Error al registrarse.");
-    }
+      console.error('Error:', err);
+      let message = 'Error de conexión';
+      if (err.response?.data) {
+        const errorData = err.response.data;
+        if (typeof errorData.detail === 'string') message = errorData.detail;
+        else if (errorData.message) message = errorData.message;
+      }
+      setError(message);
+    } finally { setLoading(false); }
   };
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const inputClass = "w-full pl-10 py-3 bg-white border-2 border-ui-border focus:border-primary focus:ring-0 text-text-primary placeholder-gray-400 font-medium outline-none transition-colors rounded-none";
+  const iconClass = "absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400";
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4 pt-20 font-sans">
-      <div className="max-w-md w-full">
-        {/* LOGO */}
-        <div className="mb-8 flex justify-center">
-          <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center shadow-2xl">
-            <Shirt className="text-white" size={30} />
+    <div className="min-h-[85vh] flex items-center justify-center bg-surface py-12 px-4 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 bg-topo-pattern opacity-5 pointer-events-none"></div>
+      
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="max-w-md w-full bg-white p-8 md:p-10 border border-ui-border shadow-xl relative z-10"
+      >
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary text-white mb-4 transform -skew-x-12 shadow-lg shadow-primary/30">
+             <Bike size={32} className="transform skew-x-12"/>
           </div>
-        </div>
-
-        {/* SELECTOR DE PESTAÑAS */}
-        <div className="flex border-b border-gray-100 mb-10">
-          <button 
-            onClick={() => setIsLogin(true)}
-            className={`flex-1 pb-4 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${isLogin ? 'border-b-2 border-black text-black' : 'text-gray-400'}`}
-          >
-            Ingresar
-          </button>
-          <button 
-            onClick={() => setIsLogin(false)}
-            className={`flex-1 pb-4 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${!isLogin ? 'border-b-2 border-black text-black' : 'text-gray-400'}`}
-          >
-            Registrarse
-          </button>
-        </div>
-
-        <div className="text-center mb-10">
-          <h2 className="text-4xl font-black uppercase tracking-tighter mb-2">
-            {isLogin ? 'Bienvenido' : 'Nueva Cuenta'}
+          <h2 className="text-3xl font-black text-text-primary uppercase italic tracking-tighter">
+             Velo<span className="text-primary">Race</span> Access
           </h2>
-          <p className="text-gray-400 uppercase text-[10px] font-bold tracking-[0.3em]">
-            {isLogin ? 'UrbanStyle Member Access' : 'Únete a la cultura urbana'}
+          <p className="mt-2 text-sm font-bold text-text-secondary uppercase tracking-wide">
+            {isLogin ? 'Acceso a Corredores' : 'Nuevo Registro'}
           </p>
         </div>
 
-        {/* FORMULARIO DINÁMICO */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="flex items-center gap-2 bg-red-50 border-l-4 border-red-500 text-red-600 px-4 py-3 text-sm font-bold mb-6">
+            <AlertCircle size={18} /> {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="flex items-center gap-2 bg-green-50 border-l-4 border-green-500 text-green-600 px-4 py-3 text-sm font-bold mb-6">
+            <AlertCircle size={18} /> {success}
+          </div>
+        )}
+
+        <form className="space-y-5" onSubmit={handleSubmit}>
           {!isLogin && (
-            <input 
-              name="name"
-              type="text" 
-              placeholder="NOMBRE COMPLETO" 
-              className="w-full bg-gray-50 border-none px-6 py-4 text-xs font-bold tracking-widest outline-none focus:ring-1 focus:ring-black transition-all"
-              onChange={handleInputChange}
-              required
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="relative">
+                <div className={iconClass}><User size={18} /></div>
+                <input name="name" required value={formData.name} onChange={handleChange} className={inputClass} placeholder="Nombre" />
+              </div>
+              <div className="relative">
+                <div className={iconClass}><User size={18} /></div>
+                <input name="lastname" required value={formData.lastname} onChange={handleChange} className={inputClass} placeholder="Apellido" />
+              </div>
+              <div className="relative col-span-2">
+                <div className={iconClass}><Phone size={18} /></div>
+                <input name="telephone" value={formData.telephone} onChange={handleChange} className={inputClass} placeholder="Teléfono" />
+              </div>
+            </div>
           )}
-          <input 
-            name="email"
-            type="email" 
-            placeholder="EMAIL" 
-            className="w-full bg-gray-50 border-none px-6 py-4 text-xs font-bold tracking-widest outline-none focus:ring-1 focus:ring-black transition-all"
-            onChange={handleInputChange}
-            required
-          />
-          <input 
-            name="password"
-            type="password" 
-            placeholder="CONTRASEÑA" 
-            className="w-full bg-gray-50 border-none px-6 py-4 text-xs font-bold tracking-widest outline-none focus:ring-1 focus:ring-black transition-all"
-            onChange={handleInputChange}
-            required
-          />
-          <button className="w-full bg-black text-white py-5 font-bold uppercase text-xs tracking-widest hover:bg-gray-800 transition-all flex items-center justify-center gap-2">
-            {isLogin ? <><LogIn size={16} /> Entrar</> : <><UserPlus size={16} /> Crear Cuenta</>}
+          
+          <div className="relative">
+            <div className={iconClass}><Mail size={18} /></div>
+            <input name="email" type="email" required value={formData.email} onChange={handleChange} className={inputClass} placeholder="Email Institucional" />
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={loading} 
+            className="w-full flex justify-center py-4 px-4 bg-text-primary hover:bg-primary text-white font-black uppercase tracking-widest transition-all hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed group"
+          >
+            {loading ? <Loader className="animate-spin" /> : (isLogin ? 'Entrar a Pista' : 'Unirse al Equipo')}
           </button>
         </form>
 
-        {/* PIE DE FORMULARIO */}
-        <div className="mt-8 text-center">
+        <div className="text-center mt-8 pt-6 border-t border-dashed border-ui-border">
           <button 
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-[10px] text-gray-400 uppercase font-bold tracking-widest hover:text-black transition-colors"
+            onClick={() => { setIsLogin(!isLogin); setError(''); setSuccess(''); }} 
+            className="text-xs font-bold text-text-secondary hover:text-primary uppercase tracking-wider transition-colors"
           >
-            {isLogin ? '¿Aún no tienes cuenta? Regístrate' : '¿Ya eres miembro? Inicia sesión'}
+            {isLogin ? '¿Nuevo aquí? Crea tu ID' : '¿Ya tienes ID? Ingresa aquí'}
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Plus, Zap, Package, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Plus, Info } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useCartStore } from '../../store/useCartStore';
 
@@ -9,86 +9,60 @@ const ProductCard = ({ product }) => {
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="group bg-surface rounded-2xl overflow-hidden border border-ui-border shadow-md hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 flex flex-col h-full relative backdrop-blur-sm"
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      layout
+      className="group bg-white border border-ui-border hover:border-primary/50 transition-all duration-300 flex flex-col relative overflow-hidden shadow-sm hover:shadow-md"
     >
-      {/* Línea decorativa superior */}
-      <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-primary/0 via-primary/50 to-primary/0 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 z-20"></div>
+      {/* Etiqueta de Categoría Flotante */}
+      <div className="absolute top-0 left-0 bg-text-primary text-white text-[10px] font-bold uppercase px-3 py-1 z-10">
+        {product.category_name}
+      </div>
 
-      {/* Header con categoría e icono decorativo */}
-      <div className="relative bg-gradient-to-br from-background via-background to-primary/5 p-6 pb-4">
-        <div className="flex items-start justify-between mb-4">
-          <div className="bg-surface/90 backdrop-blur-sm px-2.5 py-1 rounded-md text-[10px] font-bold text-primary shadow-sm border border-ui-border flex items-center gap-1">
-            <Zap size={10} className="text-primary"/> {product.category_name}
-          </div>
-          <div className="flex items-center gap-1 bg-surface/90 backdrop-blur-sm px-2 py-1 rounded-md border border-ui-border">
-            <Star size={12} className="fill-primary text-primary" />
-            <span className="text-[11px] font-bold text-text-secondary">
-              {Number(product.rating).toFixed(1)}
-            </span>
-          </div>
-        </div>
+      {/* Imagen Placeholder Técnica */}
+      <div className="aspect-[4/3] bg-surface relative flex items-center justify-center overflow-hidden border-b border-ui-border group-hover:bg-gray-100 transition-colors">
+        {/* Usamos las iniciales como "Marca" */}
+        <span className="text-6xl font-black text-ui-border/50 select-none group-hover:scale-110 transition-transform duration-500 italic">
+           {product.name.substring(0, 2).toUpperCase()}
+        </span>
         
-        {/* Icono central decorativo */}
-        <div className="flex justify-center py-4">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20 group-hover:scale-110 group-hover:bg-primary/20 transition-all duration-300">
-            <Package size={32} className="text-primary" />
-          </div>
+        {/* Acciones Rápidas */}
+        <div className="absolute bottom-2 right-2 flex gap-2 translate-y-10 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+           <Link to={`/product/${product.id}`} className="p-2 bg-white border border-ui-border rounded hover:bg-text-primary hover:text-white hover:border-text-primary text-text-primary transition-colors">
+              <Info size={18} />
+           </Link>
         </div>
       </div>
 
-      {/* Contenido */}
-      <div className="p-4 flex flex-col flex-grow relative">
-        <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-ui-border to-transparent"></div>
+      <div className="p-4 flex flex-col flex-grow">
+        <h3 className="font-bold text-text-primary uppercase tracking-tight leading-tight line-clamp-2 mb-2 group-hover:text-primary transition-colors">
+          {product.name}
+        </h3>
         
-        <div className="pt-2 mb-3">
-          <h3 className="font-bold text-base text-text-primary line-clamp-2 group-hover:text-primary transition-colors tracking-tight leading-tight min-h-[2.5rem]">
-            {product.name}
-          </h3>
-        </div>
-
-        <p className="text-text-secondary text-xs line-clamp-2 mb-4 flex-grow font-light leading-relaxed min-h-[2rem]">
-          {product.description || 'Producto de alta calidad disponible en TechStore.'}
-        </p>
-
-        {/* Stock indicator */}
-        <div className="mb-4">
-          <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-            product.stock > 10 
-              ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
-              : product.stock > 0 
-                ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-                : 'bg-red-500/10 text-red-400 border border-red-500/20'
-          }`}>
-            {product.stock > 10 ? 'En stock' : product.stock > 0 ? `Solo ${product.stock} disponibles` : 'Agotado'}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between mt-auto pt-3 border-t border-dashed border-ui-border/50">
+        <div className="mt-auto flex items-end justify-between border-t border-ui-border pt-3">
           <div className="flex flex-col">
-            <span className="text-[10px] text-text-muted uppercase tracking-wider font-medium">Precio</span>
-            <span className="text-xl font-bold text-primary tracking-tight">
-              ${product.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </span>
+             <span className="text-[10px] text-text-secondary font-bold uppercase">Precio Contado</span>
+             <span className="text-xl font-black text-text-primary tracking-tight">
+               ${product.price.toLocaleString('es-AR')}
+             </span>
           </div>
-
-          <div className="flex gap-2">
-            <Link 
-              to={`/product/${product.id}`}
-              className="flex items-center gap-1 bg-background border border-ui-border text-text-secondary hover:text-primary hover:border-primary/50 px-3 py-1.5 rounded-lg transition-all text-xs font-medium"
-            >
-              Ver <ArrowRight size={12} />
-            </Link>
-            <button 
-              onClick={() => addToCart(product)} 
-              disabled={product.stock === 0}
-              className="flex items-center gap-1 bg-primary text-black hover:bg-primary-hover px-3 py-1.5 rounded-lg transition-all active:scale-95 shadow-sm font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
+          
+          <button 
+            onClick={() => addToCart(product)} 
+            disabled={product.stock === 0}
+            className="bg-primary text-white p-2 rounded-sm hover:bg-primary-hover disabled:bg-gray-300 transition-colors transform active:scale-95"
+          >
+            <ShoppingCart size={18} />
+          </button>
+        </div>
+        
+        <div className="flex justify-between items-center mt-2 text-[10px] font-medium text-text-secondary uppercase">
+           <span>Stock: {product.stock > 0 ? product.stock : 'Sin Stock'}</span>
+           {product.stock > 0 ? (
+             <span className="text-green-600 flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-600"></div> Disponible</span>
+           ) : (
+             <span className="text-red-500">Agotado</span>
+           )}
         </div>
       </div>
     </motion.div>

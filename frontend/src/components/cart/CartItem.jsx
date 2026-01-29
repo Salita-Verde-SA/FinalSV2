@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Plus, Minus } from 'lucide-react';
+import { Trash2, Plus, Minus, Tag } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useCartStore } from '../../store/useCartStore';
 
@@ -9,48 +9,45 @@ const CartItem = ({ item }) => {
   return (
     <motion.div 
       layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -100 }}
-      className="group relative flex flex-col sm:flex-row items-center gap-6 p-4 bg-surface rounded-2xl border border-ui-border shadow-sm hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 mb-4 overflow-hidden"
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 100 }}
+      className="flex flex-col sm:flex-row items-center gap-6 p-4 bg-white border border-ui-border hover:border-l-4 hover:border-l-primary transition-all shadow-sm"
     >
-      {/* Línea decorativa superior (Efecto Cyber) */}
-      <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-primary/0 via-primary/50 to-primary/0 scale-x-0 group-hover:scale-x-100 transition-transform duration-500 z-10"></div>
-
-      <div className="w-20 h-20 bg-background rounded-xl p-2 flex-shrink-0 border border-ui-border flex items-center justify-center">
-        <img 
-          src={item.image_url} 
-          alt={item.name} 
-          className="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal" 
-        />
+      {/* Thumbnail */}
+      <div className="w-24 h-24 bg-surface flex items-center justify-center font-black text-3xl text-ui-border select-none border border-ui-border italic">
+        {item.name.substring(0, 2).toUpperCase()}
       </div>
 
       <div className="flex-grow text-center sm:text-left">
-        <h3 className="font-bold text-text-primary text-base line-clamp-1 group-hover:text-primary transition-colors">
+        <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+           <Tag size={12} className="text-primary"/>
+           <span className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{item.category_name}</span>
+        </div>
+        <h3 className="font-bold text-text-primary text-lg uppercase leading-tight mb-2">
           {item.name}
         </h3>
-        <p className="text-text-secondary text-xs mb-1">{item.category_name}</p>
-        <div className="font-bold text-primary text-lg">
-          ${item.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        <div className="font-black text-text-primary text-xl tracking-tight">
+          ${item.price.toLocaleString('es-AR')}
         </div>
       </div>
 
-      <div className="flex items-center gap-6 relative z-10">
-        <div className="flex items-center bg-background rounded-lg border border-ui-border shadow-inner">
+      <div className="flex items-center gap-6">
+        <div className="flex items-center border border-ui-border h-10">
           <button 
             onClick={() => updateQuantity(item.id, item.quantity - 1)} 
             disabled={item.quantity <= 1} 
-            className="p-2 text-text-secondary hover:text-primary disabled:opacity-30 transition-colors hover:bg-surface rounded-l-lg"
+            className="w-8 h-full flex items-center justify-center hover:bg-surface text-text-secondary transition-colors"
           >
             <Minus size={14} />
           </button>
-          <span className="w-8 text-center font-bold text-text-primary text-sm tabular-nums">
+          <span className="w-10 text-center font-bold text-text-primary text-sm border-x border-ui-border flex items-center justify-center h-full">
             {item.quantity}
           </span>
           <button 
             onClick={() => updateQuantity(item.id, item.quantity + 1)} 
             disabled={item.quantity >= item.stock} 
-            className="p-2 text-text-secondary hover:text-primary disabled:opacity-30 transition-colors hover:bg-surface rounded-r-lg"
+            className="w-8 h-full flex items-center justify-center hover:bg-surface text-text-secondary transition-colors"
           >
             <Plus size={14} />
           </button>
@@ -58,10 +55,10 @@ const CartItem = ({ item }) => {
 
         <button 
           onClick={() => removeFromCart(item.id)} 
-          className="text-text-muted hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all"
-          title="Eliminar producto"
+          className="text-gray-400 hover:text-red-500 transition-colors p-2"
+          title="Eliminar del equipo"
         >
-          <Trash2 size={18} />
+          <Trash2 size={20} />
         </button>
       </div>
     </motion.div>
