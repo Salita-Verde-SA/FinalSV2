@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, CreditCard, MapPin, Plus, Check, X, Calendar, Lock, Loader, AlertCircle, Bike } from 'lucide-react';
+import { ArrowLeft, CreditCard, MapPin, Bike } from 'lucide-react';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { addressService } from '../services/addressService';
 import { orderService } from '../services/orderService';
+import { billService } from '../services/billService'; // Importación necesaria para la factura
 import AlertModal from '../components/ui/AlertModal';
 import { motion } from 'framer-motion';
 
@@ -21,7 +22,6 @@ const Checkout = () => {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
   const [newAddress, setNewAddress] = useState({ street: '', number: '', city: '' });
-  const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvc: '' });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'info' });
@@ -40,9 +40,15 @@ const Checkout = () => {
       const data = await addressService.getMyAddresses(user.id_key);
       const normalized = data.map(addr => ({ ...addr, id: addr.id || addr.id_key }));
       setAddresses(normalized);
-      if (normalized.length > 0) { setSelectedAddressId(normalized[0].id); setIsAddingAddress(false); } 
-      else { setIsAddingAddress(true); }
-    } catch (error) { console.error("Error direcciones:", error); }
+      if (normalized.length > 0) { 
+        setSelectedAddressId(normalized[0].id); 
+        setIsAddingAddress(false); 
+      } else { 
+        setIsAddingAddress(true); 
+      }
+    } catch (error) { 
+      console.error("Error cargando direcciones:", error); 
+    }
   };
 
   const handleSaveNewAddress = async () => {
@@ -54,31 +60,71 @@ const Checkout = () => {
       setSelectedAddressId(saved.id || saved.id_key);
       setIsAddingAddress(false);
       setNewAddress({ street: '', number: '', city: '' });
-    } catch (e) { showAlert('error', 'Error', 'No se pudo guardar la ruta.'); } 
-    finally { setLoading(false); }
+    } catch (e) { 
+      showAlert('error', 'Error', 'No se pudo guardar la ruta.'); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const showAlert = (type, title, message) => setAlertModal({ isOpen: true, type, title, message });
 
   const handlePayment = async () => {
-    let finalAddr = selectedAddressId;
-    setLoading(true);
-    try {
-       // Validaciones simplificadas para el ejemplo
-       if (isAddingAddress) {
-          const saved = await addressService.create({ ...newAddress, client_id: user.id_key });
-          finalAddr = saved.id || saved.id_key;
-       }
-       if (!finalAddr) { setLoading(false); return showAlert('warning', 'Sin Ruta', 'Selecciona dirección.'); }
-       
-       await orderService.createOrder({
-         client_id: user.id_key, total: finalTotal, status: "PENDING", payment_type: "CREDIT_CARD", address_id: finalAddr,
-         details: cart.map(i => ({ product_id: i.id_key, quantity: i.quantity, price: i.price }))
-       });
-       clearCart(); setSuccess(true);
-    } catch (e) { showAlert('error', 'Fallo Mecánico', 'Error al procesar el pedido.'); } 
-    finally { setLoading(false); }
-  };
+  let finalAddr = selectedAddressId;
+  setLoading(true);
+  
+  try {
+    // 1. Gestión de dirección
+    if (isAddingAddress) {
+      const saved = await addressService.create({ 
+        street: newAddress.street,
+        number: newAddress.number,
+        city: newAddress.city,
+        client_id: user.id_key 
+      });
+      finalAddr = saved.id || saved.id_key;
+    }
+
+    if (!finalAddr) {
+      setLoading(false);
+      return showAlert('warning', 'Sin Ruta', 'Selecciona una dirección.');
+    }
+
+    // 2. CREACIÓN DE FACTURA (Ajustado para evitar Error 422)
+    const newBill = await billService.create({
+      client_id: user.id_key,
+      total: finalTotal,
+      // Usamos formato ISO simple para la fecha
+      date: new Date().toISOString().split('.')[0], // Formato YYYY-MM-DDTHH:MM:SS
+      status: "PAID"
+    });
+
+    // 3. CREACIÓN DE LA ORDEN
+    await orderService.createOrder({
+      client_id: user.id_key,
+      total: finalTotal,
+      status: 1, 
+      delivery_method: 3, 
+      address_id: finalAddr,
+      bill_id: newBill.id_key || newBill.id, // Usar la propiedad correcta que devuelva tu API
+      details: cart.map(i => ({
+        product_id: i.id_key,
+        quantity: i.quantity,
+        price: i.price
+      }))
+    });
+
+    clearCart();
+    setSuccess(true);
+  } catch (e) {
+    console.error("Error detallado:", e.response?.data || e);
+    // Si el error es 422, mostramos el mensaje que viene del servidor
+    const errorMsg = e.response?.data?.detail?.[0]?.msg || 'Error de validación en los datos.';
+    showAlert('error', 'Fallo de Datos', `El servidor rechazó la información: ${errorMsg}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (success) {
     return (
@@ -101,7 +147,6 @@ const Checkout = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
-            {/* DIRECCION */}
             <div className="bg-white border-2 border-ui-border p-6">
               <div className="flex justify-between items-center mb-6 border-b-2 border-dashed border-ui-border pb-2">
                  <h3 className="font-bold uppercase flex items-center gap-2"><MapPin className="text-primary"/> Punto de Entrega</h3>
@@ -128,13 +173,12 @@ const Checkout = () => {
                    </div>
                    <div className="mt-4 text-right">
                       {addresses.length > 0 && <button onClick={() => setIsAddingAddress(false)} className="mr-4 text-xs font-bold uppercase">Cancelar</button>}
-                      <button onClick={handleSaveNewAddress} className="bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-primary">Guardar</button>
+                      <button onClick={handleSaveNewAddress} className="bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-primary">Guardar Dirección</button>
                    </div>
                 </div>
               )}
             </div>
 
-            {/* PAGO */}
             <div className="bg-white border-2 border-ui-border p-6">
               <h3 className="font-bold uppercase flex items-center gap-2 mb-6 border-b-2 border-dashed border-ui-border pb-2"><CreditCard className="text-primary"/> Pago Seguro</h3>
               <div className="space-y-4">

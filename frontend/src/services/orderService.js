@@ -7,10 +7,9 @@ export const orderService = {
     return response.data;
   },
 
-  // Obtener pedidos del cliente autenticado (filtrar en frontend)
+  // Obtener pedidos del cliente autenticado
   getMyOrders: async (clientId) => {
     const response = await api.get('/orders/');
-    // Filtrar órdenes del cliente en el frontend
     return response.data
       .filter(order => order.client_id === clientId)
       .map(order => ({
@@ -30,28 +29,29 @@ export const orderService = {
     return response.data;
   },
 
-  // Crear orden
+  // Crear orden - Corrigiendo error de rango (1, 2, 3, 4 o 5)
   createOrder: async (orderData) => {
-    const payload = {
-      date: orderData.date || new Date().toISOString(),
-      total: parseFloat(orderData.total),
-      delivery_method: orderData.delivery_method || 3,
-      status: orderData.status || 1,
-      client_id: orderData.client_id,
-      bill_id: orderData.bill_id
-    };
-    const response = await api.post('/orders/', payload);
-    return response.data;
-  },
-
-  // Actualizar estado de orden
+  const payload = {
+    // Enviamos solo la fecha (YYYY-MM-DD) para cumplir con el error de "zero time"
+    date: new Date().toISOString().split('T')[0],
+    total: Number(orderData.total),
+    client_id: Number(orderData.client_id),
+    address_id: Number(orderData.address_id),
+    // Forzamos valores que sabemos que están en el rango 1-5
+    status: 1, 
+    delivery_method: 1,
+    bill_id: orderData.bill_id ? Number(orderData.bill_id) : null
+  };
+  
+  const response = await api.post('/orders/', payload);
+  return response.data;
+},
+  // Actualizar estado
   updateStatus: async (id, status) => {
-    // Primero obtener la orden completa
     const order = await orderService.getById(id);
-    // Actualizar solo el status
     const response = await api.put(`/orders/${id}/`, {
       ...order,
-      status: status
+      status: Number(status)
     });
     return response.data;
   }

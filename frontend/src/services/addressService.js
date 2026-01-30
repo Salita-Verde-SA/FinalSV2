@@ -22,27 +22,29 @@ export const addressService = {
 
   // Crear dirección
   create: async (addressData) => {
-    const payload = {
-      street: addressData.street,
-      number: addressData.number || '',
-      city: addressData.city,
-      client_id: addressData.client_id
-    };
-    const response = await api.post('/addresses/', payload);
-    return response.data;
-  },
+  const payload = {
+    street: String(addressData.street),
+    number: String(addressData.number),
+    city: String(addressData.city),
+    client_id: Number(addressData.client_id) // Forzar a número
+  };
+  const response = await api.post('/addresses/', payload);
+  return response.data;
+},
 
-  // Actualizar dirección (CORREGIDO: Sin barra final)
-  update: async (id, addressData) => {
-    const payload = {
-      street: addressData.street,
-      number: addressData.number || '',
-      city: addressData.city
-    };
-    const response = await api.put(`/addresses/${id}`, payload);
-    return response.data;
-  },
+// Actualizar dirección (CORREGIDO)
+update: async (id, addressData) => {
+  const payload = {
+    street: String(addressData.street).trim(),
+    number: String(addressData.number || '').trim(),
+    city: String(addressData.city).trim(), // Se agregó la coma faltante aquí
+    client_id: Number(addressData.client_id)
+  };
 
+  // Asegúrate de usar el ID correcto en la URL
+  const response = await api.put(`/addresses/${id}`, payload);
+  return response.data;
+},
   // Eliminar dirección (CORREGIDO: Sin barra final)
   delete: async (id) => {
     await api.delete(`/addresses/${id}`);

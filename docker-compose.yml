@@ -76,10 +76,10 @@ services:
       - app-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health_check/"]
-      interval: 30s
+      interval: 15s # Reducido para detectar éxito más rápido
       timeout: 10s
-      retries: 5
-      start_period: 40s
+      retries: 10   # Aumentado para dar margen al arranque
+      start_period: 60s # Aumentado de 40s a 60s
 
   # =========================================
   # 4. FRONTEND (React + Nginx)
