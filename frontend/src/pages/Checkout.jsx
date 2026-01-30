@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, CreditCard, MapPin, Bike } from 'lucide-react';
+import { ArrowLeft, CheckCircle, CreditCard, MapPin, Plus, Check, X, Calendar, Lock, Loader, AlertCircle } from 'lucide-react';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { addressService } from '../services/addressService';
 import { orderService } from '../services/orderService';
-import { billService } from '../services/billService'; // Importación necesaria para la factura
+import { billService } from '../services/billService';
+import { orderDetailService } from '../services/orderDetailService';
 import AlertModal from '../components/ui/AlertModal';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Checkout = () => {
   const { cart, getTotalPrice, clearCart } = useCartStore();
@@ -18,199 +19,547 @@ const Checkout = () => {
   const shippingCost = totalPrice > 500 ? 0 : 25;
   const finalTotal = totalPrice + shippingCost;
 
+  // Estado de direcciones de envío
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [isAddingAddress, setIsAddingAddress] = useState(false);
+  // Campos state y zip_code eliminados por consistencia con el esquema del backend
   const [newAddress, setNewAddress] = useState({ street: '', number: '', city: '' });
+
+  // Estado de datos de tarjeta de pago
+  const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvc: '' });
+
+  // Estado de interfaz de usuario
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'info' });
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'info', onCloseAction: null });
 
+  // Verificación de autenticación y contenido del carrito
   useEffect(() => {
     if (!isAuthenticated) navigate('/login');
     if (cart.length === 0 && !success) navigate('/');
   }, [isAuthenticated, cart, navigate, success]);
 
+  // Carga de direcciones del usuario autenticado
   useEffect(() => {
-    if (isAuthenticated && user?.id_key) loadAddresses();
+    if (isAuthenticated && user?.id_key) {
+      loadAddresses();
+    }
   }, [isAuthenticated, user]);
 
   const loadAddresses = async () => {
     try {
       const data = await addressService.getMyAddresses(user.id_key);
-      const normalized = data.map(addr => ({ ...addr, id: addr.id || addr.id_key }));
-      setAddresses(normalized);
-      if (normalized.length > 0) { 
-        setSelectedAddressId(normalized[0].id); 
-        setIsAddingAddress(false); 
-      } else { 
-        setIsAddingAddress(true); 
+      
+      // Normalización de direcciones asegurando la existencia del campo 'id'
+      const normalizedAddresses = data.map(addr => {
+        const normalizedId = addr.id_key || addr.id;
+        return {
+          ...addr,
+          id: normalizedId,
+          id_key: normalizedId
+        };
+      });
+
+      setAddresses(normalizedAddresses);
+
+      if (normalizedAddresses.length > 0) {
+        // Selección automática de la primera dirección disponible
+        const firstAddressId = normalizedAddresses[0].id;
+        setSelectedAddressId(firstAddressId);
+        setIsAddingAddress(false);
+      } else {
+        // Presentación del formulario si no existen direcciones
+        setSelectedAddressId(null);
+        setIsAddingAddress(true);
       }
     } catch (error) { 
       console.error("Error cargando direcciones:", error); 
     }
   };
 
+  const handleAddressChange = (e) => setNewAddress({ ...newAddress, [e.target.name]: e.target.value });
+
+  // Guardado de nueva dirección sin proceder al pago
   const handleSaveNewAddress = async () => {
-    if (!newAddress.street || !newAddress.city) return showAlert('error', 'Faltan datos', 'Calle y Ciudad obligatorios.');
+    if (!newAddress.street || !newAddress.city) {
+      return showAlert('error', 'Dirección Incompleta', 'Calle y Ciudad son obligatorios.');
+    }
+    
     setLoading(true);
     try {
-      const saved = await addressService.create({ ...newAddress, client_id: user.id_key });
+      const savedAddr = await addressService.create({ ...newAddress, client_id: user.id_key });
+      const newAddrId = savedAddr.id_key || savedAddr.id;
+      
+      // Recarga de la lista de direcciones
       await loadAddresses();
-      setSelectedAddressId(saved.id || saved.id_key);
-      setIsAddingAddress(false);
+      
+      // Selección de la nueva dirección posterior a la recarga
+      setTimeout(() => {
+        setSelectedAddressId(newAddrId);
+        setIsAddingAddress(false);
+      }, 100);
+      
+      // Limpieza del formulario
       setNewAddress({ street: '', number: '', city: '' });
-    } catch (e) { 
-      showAlert('error', 'Error', 'No se pudo guardar la ruta.'); 
-    } finally { 
-      setLoading(false); 
+      
+      showAlert('success', '¡Guardada!', 'La dirección ha sido guardada correctamente.');
+    } catch (error) {
+      console.error(error);
+      showAlert('error', 'Error', 'No se pudo guardar la dirección. Inténtalo nuevamente.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const showAlert = (type, title, message) => setAlertModal({ isOpen: true, type, title, message });
+  const handleCardChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'number') {
+      const v = value.replace(/\D/g, '').slice(0, 16);
+      const parts = [];
+      for (let i = 0; i < v.length; i += 4) parts.push(v.slice(i, i + 4));
+      setCardData({ ...cardData, number: parts.join(' ') });
+    } else if (name === 'cvc') {
+      setCardData({ ...cardData, cvc: value.replace(/\D/g, '').slice(0, 3) });
+    } else if (name === 'expiry') {
+      let v = value.replace(/\D/g, '').slice(0, 4);
+      if (v.length >= 2) v = `${v.slice(0, 2)}/${v.slice(2)}`;
+      setCardData({ ...cardData, expiry: v });
+    } else {
+      setCardData({ ...cardData, [name]: value });
+    }
+  };
+
+  // Validación de fecha de expiración de tarjeta
+  const isCardExpired = (expiry) => {
+    if (!expiry || expiry.length < 5) return true;
+    
+    const [monthStr, yearStr] = expiry.split('/');
+    const month = parseInt(monthStr, 10);
+    const year = parseInt(`20${yearStr}`, 10); // Formato de año asumido: 20XX
+    
+    if (isNaN(month) || isNaN(year)) return true;
+    if (month < 1 || month > 12) return true;
+    
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // getMonth() retorna índice base 0
+    
+    // Verificación de expiración por año
+    if (year < currentYear) return true;
+    
+    // Verificación de expiración por mes si el año es el actual
+    if (year === currentYear && month < currentMonth) return true;
+    
+    return false;
+  };
+
+  const showAlert = (type, title, message, onCloseAction = null) => setAlertModal({ isOpen: true, type, title, message, onCloseAction });
+
+  // Cierre del modal y ejecución de acción posterior opcional
+  const handleCloseAlert = () => {
+    const action = alertModal.onCloseAction;
+    setAlertModal({ ...alertModal, isOpen: false, onCloseAction: null });
+    
+    // Ejecución de la acción después del cierre si existe
+    if (action) {
+      action();
+    }
+  };
 
   const handlePayment = async () => {
-  let finalAddr = selectedAddressId;
-  setLoading(true);
-  
-  try {
-    // 1. Gestión de dirección
-    if (isAddingAddress) {
-      const saved = await addressService.create({ 
-        street: newAddress.street,
-        number: newAddress.number,
-        city: newAddress.city,
-        client_id: user.id_key 
-      });
-      finalAddr = saved.id || saved.id_key;
-    }
+    setLoading(true);
 
-    if (!finalAddr) {
+    try {
+      let finalAddressId = null;
+
+      // 1. Procesamiento de dirección (nueva o existente)
+      if (isAddingAddress) {
+        // Creación de nueva dirección
+        if (!newAddress.street || !newAddress.city) {
+          setLoading(false);
+          return showAlert('error', 'Dirección Incompleta', 'Calle y Ciudad son obligatorios.');
+        }
+        
+        const savedAddr = await addressService.create({ ...newAddress, client_id: user.id_key });
+        finalAddressId = savedAddr.id_key || savedAddr.id;
+        
+      } else {
+        // Utilización de dirección seleccionada existente
+        if (!selectedAddressId && addresses.length === 0) {
+          setLoading(false);
+          return showAlert('warning', 'Falta Dirección', 'Debes agregar una dirección de envío.');
+        }
+        
+        if (!selectedAddressId && addresses.length > 0) {
+          finalAddressId = addresses[0].id;
+        } else {
+          finalAddressId = selectedAddressId;
+        }
+      }
+
+      // Validación final de dirección
+      if (!finalAddressId) {
+        setLoading(false);
+        return showAlert('warning', 'Falta Dirección', 'Selecciona dónde enviar tu pedido.');
+      }
+
+      // 2. Validar Tarjeta - Número y CVC
+      if (cardData.number.replace(/\s/g, '').length < 16) {
+        setLoading(false);
+        return showAlert('error', 'Número de Tarjeta Inválido', 'El número de tarjeta debe tener 16 dígitos.');
+      }
+      
+      if (cardData.cvc.length < 3) {
+        setLoading(false);
+        return showAlert('error', 'Código de Seguridad Inválido', 'El código de seguridad (CVC) debe tener 3 dígitos.');
+      }
+      
+      if (cardData.expiry.length < 5) {
+        setLoading(false);
+        return showAlert('error', 'Fecha de Vencimiento Inválida', 'Ingresa la fecha de vencimiento en formato MM/YY.');
+      }
+      
+      // 3. Validación de fecha de expiración de la tarjeta
+      if (isCardExpired(cardData.expiry)) {
+        setLoading(false);
+        return showAlert('error', 'Tarjeta Expirada', 'La tarjeta ingresada está vencida. Por favor usa otra tarjeta.');
+      }
+      
+      // 4. Validación del nombre del titular
+      if (!cardData.name || cardData.name.trim().length < 3) {
+        setLoading(false);
+        return showAlert('error', 'Nombre del Titular', 'Ingresa el nombre del titular de la tarjeta.');
+      }
+
+      // 5. Creación de factura (requerida por el esquema de Order)
+      const billPayload = {
+        total: finalTotal,
+        discount: shippingCost === 0 ? 25 : 0,
+        payment_type: 'card',
+        client_id: user.id_key
+      };
+      
+      let createdBill;
+      try {
+        createdBill = await billService.create(billPayload);
+      } catch (billError) {
+        console.error('Error creando factura:', billError);
+        console.error('Response data:', billError.response?.data);
+        
+        let errorMsg = 'Error al crear la factura.';
+        if (billError.response?.data?.detail) {
+          const detail = billError.response.data.detail;
+          if (typeof detail === 'string') {
+            errorMsg = detail;
+          } else if (Array.isArray(detail)) {
+            errorMsg = detail.map(err => {
+              const field = err.loc?.join('.') || 'campo';
+              return `${field}: ${err.msg}`;
+            }).join(' | ');
+          }
+        }
+        throw new Error(errorMsg);
+      }
+      
+      const billId = createdBill.id_key || createdBill.id;
+
+      // 6. Creación de orden con el identificador de factura
+      const orderPayload = {
+        client_id: parseInt(user.id_key),
+        bill_id: parseInt(billId),
+        total: parseFloat(finalTotal),
+        delivery_method: 3,
+        status: 1
+      };
+
+      let createdOrder;
+      try {
+        createdOrder = await orderService.createOrder(orderPayload);
+      } catch (orderError) {
+        console.error('Error creando orden:', orderError);
+        const errorMsg = orderError.response?.data?.detail;
+        throw new Error(typeof errorMsg === 'string' ? errorMsg : 'Error al crear la orden.');
+      }
+      
+      const orderId = createdOrder.id_key || createdOrder.id;
+
+      // 7. Creación de detalles de orden para cada producto del carrito
+      for (const item of cart) {
+        try {
+          await orderDetailService.create({
+            order_id: parseInt(orderId),
+            product_id: parseInt(item.id_key || item.id),
+            quantity: parseInt(item.quantity),
+            price: parseFloat(item.price)
+          });
+        } catch (detailError) {
+          console.error('Error creando detalle:', detailError);
+          const errorMsg = detailError.response?.data?.detail;
+          if (typeof errorMsg === 'string' && errorMsg.includes('stock')) {
+            throw new Error(`Stock insuficiente para "${item.name}".`);
+          }
+          throw new Error(typeof errorMsg === 'string' ? errorMsg : `Error al agregar "${item.name}" al pedido.`);
+        }
+      }
+      
+      clearCart();
+      
+      // Presentación del modal de éxito - al cerrar se muestra la pantalla de confirmación
+      showAlert(
+        'success', 
+        '¡Compra Exitosa!', 
+        `Tu pedido #${orderId} ha sido procesado correctamente. Recibirás un correo con los detalles del envío.`,
+        () => setSuccess(true)  // Esta función se ejecutará al cerrar el modal
+      );
+      
+    } catch (error) {
+      console.error('Error en checkout:', error);
+      
+      let errorMessage = error.message || 'No se pudo procesar el pedido. Inténtalo nuevamente.';
+      
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else if (Array.isArray(detail)) {
+          errorMessage = detail.map(err => {
+            const field = err.loc?.slice(-1)[0] || 'campo';
+            return `${field}: ${err.msg}`;
+          }).join('. ');
+        }
+      }
+      
+      showAlert('error', 'Error en el Pedido', errorMessage);
+    } finally {
       setLoading(false);
-      return showAlert('warning', 'Sin Ruta', 'Selecciona una dirección.');
     }
-
-    // 2. CREACIÓN DE FACTURA (Ajustado para evitar Error 422)
-    const newBill = await billService.create({
-      client_id: user.id_key,
-      total: finalTotal,
-      // Usamos formato ISO simple para la fecha
-      date: new Date().toISOString().split('.')[0], // Formato YYYY-MM-DDTHH:MM:SS
-      status: "PAID"
-    });
-
-    // 3. CREACIÓN DE LA ORDEN
-    await orderService.createOrder({
-      client_id: user.id_key,
-      total: finalTotal,
-      status: 1, 
-      delivery_method: 3, 
-      address_id: finalAddr,
-      bill_id: newBill.id_key || newBill.id, // Usar la propiedad correcta que devuelva tu API
-      details: cart.map(i => ({
-        product_id: i.id_key,
-        quantity: i.quantity,
-        price: i.price
-      }))
-    });
-
-    clearCart();
-    setSuccess(true);
-  } catch (e) {
-    console.error("Error detallado:", e.response?.data || e);
-    // Si el error es 422, mostramos el mensaje que viene del servidor
-    const errorMsg = e.response?.data?.detail?.[0]?.msg || 'Error de validación en los datos.';
-    showAlert('error', 'Fallo de Datos', `El servidor rechazó la información: ${errorMsg}`);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   if (success) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-surface text-center">
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-24 h-24 bg-primary text-white rounded-full flex items-center justify-center mb-6 shadow-xl">
-          <Bike size={48} />
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background text-center">
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-24 h-24 bg-primary/20 rounded-full flex items-center justify-center mb-6 text-primary border border-primary/50 shadow-[0_0_30px_rgba(204,255,0,0.3)]">
+          <CheckCircle size={48} />
         </motion.div>
-        <h2 className="text-4xl font-black italic text-text-primary uppercase mb-2">¡Salida Confirmada!</h2>
-        <p className="text-text-secondary font-medium mb-8">Tu equipo está en preparación.</p>
-        <button onClick={() => navigate('/')} className="bg-black text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-primary transition-colors">Volver a Pista</button>
+        <h2 className="text-3xl font-bold text-text-primary mb-2">¡Pago Exitoso!</h2>
+        <p className="text-text-secondary mb-8 max-w-md">Tu orden ha sido procesada y se está preparando para el envío.</p>
+        <div className="flex gap-4">
+          <button onClick={() => navigate('/profile')} className="bg-surface border border-ui-border hover:border-primary text-text-primary px-6 py-3 rounded-xl font-bold transition-all">Ver Pedidos</button>
+          <button onClick={() => navigate('/')} className="bg-primary hover:bg-primary-hover text-black px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all">Seguir Comprando</button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-surface py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6"><Link to="/cart" className="text-xs font-bold uppercase text-text-secondary hover:text-primary flex items-center gap-2"><ArrowLeft size={14}/> Volver al Garage</Link></div>
-        <h1 className="text-4xl font-black text-text-primary uppercase italic mb-8 border-b-4 border-primary inline-block">Confirmar Pedido</h1>
+        <div className="mb-8">
+          <Link to="/cart" className="inline-flex items-center text-text-secondary hover:text-primary transition-colors text-sm font-medium group">
+            <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" /> 
+            Volver al Carrito
+          </Link>
+        </div>
+
+        <h1 className="text-3xl font-bold text-text-primary mb-8 tracking-tight">Finalizar Compra</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* COLUMNA IZQUIERDA: FORMULARIOS */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white border-2 border-ui-border p-6">
-              <div className="flex justify-between items-center mb-6 border-b-2 border-dashed border-ui-border pb-2">
-                 <h3 className="font-bold uppercase flex items-center gap-2"><MapPin className="text-primary"/> Punto de Entrega</h3>
-                 {!isAddingAddress && <button onClick={() => {setIsAddingAddress(true); setSelectedAddressId(null);}} className="text-xs font-bold text-primary hover:underline">Nueva Ruta</button>}
+            
+            {/* 1. SECCIÓN DIRECCIÓN */}
+            <div className="bg-surface rounded-2xl border border-ui-border p-6 shadow-sm">
+              <div className="flex justify-between items-center mb-6 border-b border-ui-border pb-4">
+                <h3 className="font-bold text-text-primary flex items-center gap-2 text-lg">
+                  <MapPin className="text-primary" size={20}/> Dirección de Envío
+                </h3>
+                {!isAddingAddress && (
+                  <button onClick={() => { setIsAddingAddress(true); setSelectedAddressId(null); }} className="text-xs font-bold text-primary hover:underline flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 transition-colors">
+                    <Plus size={14}/> Nueva Dirección
+                  </button>
+                )}
+                {isAddingAddress && addresses.length > 0 && (
+                  <button onClick={() => { setIsAddingAddress(false); if(addresses.length > 0) setSelectedAddressId(addresses[0].id); }} className="text-xs text-text-secondary hover:text-primary flex items-center gap-1 bg-surface border border-ui-border px-3 py-1.5 rounded-lg transition-colors">
+                    <X size={14}/> Cancelar
+                  </button>
+                )}
               </div>
-              
-              {!isAddingAddress && addresses.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {addresses.map(addr => (
-                    <div key={addr.id} onClick={() => setSelectedAddressId(addr.id)} className={`p-4 border-2 cursor-pointer transition-all ${selectedAddressId === addr.id ? 'border-primary bg-orange-50' : 'border-ui-border hover:border-gray-400'}`}>
-                       <div className="font-bold text-text-primary uppercase text-sm">{addr.street} {addr.number}</div>
-                       <div className="text-xs text-text-secondary font-mono">{addr.city}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
 
-              {(isAddingAddress || addresses.length === 0) && (
-                <div className="bg-surface p-4 border border-ui-border">
-                   <div className="grid grid-cols-2 gap-4">
-                      <input name="street" value={newAddress.street} onChange={(e) => setNewAddress({...newAddress, [e.target.name]: e.target.value})} placeholder="CALLE" className="col-span-2 p-2 border border-ui-border font-bold text-sm outline-none focus:border-primary"/>
-                      <input name="number" value={newAddress.number} onChange={(e) => setNewAddress({...newAddress, [e.target.name]: e.target.value})} placeholder="ALTURA" className="p-2 border border-ui-border font-bold text-sm outline-none focus:border-primary"/>
-                      <input name="city" value={newAddress.city} onChange={(e) => setNewAddress({...newAddress, [e.target.name]: e.target.value})} placeholder="CIUDAD" className="p-2 border border-ui-border font-bold text-sm outline-none focus:border-primary"/>
-                   </div>
-                   <div className="mt-4 text-right">
-                      {addresses.length > 0 && <button onClick={() => setIsAddingAddress(false)} className="mr-4 text-xs font-bold uppercase">Cancelar</button>}
-                      <button onClick={handleSaveNewAddress} className="bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-primary">Guardar Dirección</button>
-                   </div>
-                </div>
-              )}
+              <div className="space-y-4">
+                {/* LISTA DE DIRECCIONES */}
+                {!isAddingAddress && addresses.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {addresses.map((addr) => (
+                      <div 
+                        key={addr.id}
+                        onClick={() => setSelectedAddressId(addr.id)}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all relative flex items-start gap-3 group ${
+                          selectedAddressId === addr.id 
+                            ? 'bg-primary/5 border-primary shadow-sm ring-1 ring-primary/50' 
+                            : 'bg-background border-ui-border hover:border-primary/50'
+                        }`}
+                      >
+                        <div className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                           selectedAddressId === addr.id ? 'border-primary bg-primary' : 'border-ui-border group-hover:border-primary/50'
+                        }`}>
+                          {selectedAddressId === addr.id && <Check size={12} className="text-black stroke-[3]"/>}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-text-primary">{addr.street} {addr.number}</p>
+                          <p className="text-xs text-text-secondary mt-0.5">{addr.city}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* FORMULARIO DE NUEVA DIRECCIÓN */}
+                {(isAddingAddress || addresses.length === 0) && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-background/50 p-6 rounded-xl border border-dashed border-ui-border">
+                    <div className="flex items-center gap-2 mb-4 text-sm text-primary font-bold">
+                       <Plus size={16}/> Ingresa los datos del nuevo destino
+                    </div>
+                    {/* Campos alineados con backend: Calle, Número, Ciudad */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Calle</label>
+                        <input name="street" value={newAddress.street} onChange={handleAddressChange} className="w-full p-3 bg-surface border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="Ej: Av. Corrientes" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Número / Altura</label>
+                        <input name="number" value={newAddress.number} onChange={handleAddressChange} className="w-full p-3 bg-surface border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="1234" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Ciudad</label>
+                        <input name="city" value={newAddress.city} onChange={handleAddressChange} className="w-full p-3 bg-surface border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="Ciudad Autónoma de Buenos Aires" />
+                      </div>
+                    </div>
+                    
+                    {/* Botón para guardar la dirección */}
+                    <div className="mt-6 flex justify-end gap-3">
+                      {addresses.length > 0 && (
+                        <button 
+                          type="button"
+                          onClick={() => { setIsAddingAddress(false); if(addresses.length > 0) setSelectedAddressId(addresses[0].id); }}
+                          className="px-4 py-2.5 text-sm font-medium text-text-secondary hover:text-text-primary bg-surface border border-ui-border rounded-xl transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                      <button 
+                        type="button"
+                        onClick={handleSaveNewAddress}
+                        disabled={loading}
+                        className="px-6 py-2.5 text-sm font-bold bg-primary hover:bg-primary-hover text-black rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center gap-2 disabled:opacity-70"
+                      >
+                        {loading ? <Loader className="animate-spin" size={16}/> : <><Check size={16}/> Guardar Dirección</>}
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
             </div>
 
-            <div className="bg-white border-2 border-ui-border p-6">
-              <h3 className="font-bold uppercase flex items-center gap-2 mb-6 border-b-2 border-dashed border-ui-border pb-2"><CreditCard className="text-primary"/> Pago Seguro</h3>
-              <div className="space-y-4">
-                 <input placeholder="NUMERO DE TARJETA" className="w-full p-3 border-2 border-ui-border font-mono text-sm outline-none focus:border-primary bg-surface"/>
-                 <div className="grid grid-cols-2 gap-4">
-                    <input placeholder="MM/AA" className="p-3 border-2 border-ui-border font-mono text-sm outline-none focus:border-primary bg-surface"/>
-                    <input placeholder="CVC" className="p-3 border-2 border-ui-border font-mono text-sm outline-none focus:border-primary bg-surface"/>
-                 </div>
-                 <input placeholder="TITULAR" className="w-full p-3 border-2 border-ui-border font-bold text-sm outline-none focus:border-primary bg-surface"/>
+            {/* 2. SECCIÓN PAGO */}
+            <div className="bg-surface rounded-2xl border border-ui-border p-6 shadow-sm">
+              <h3 className="font-bold text-text-primary flex items-center gap-2 mb-6 text-lg border-b border-ui-border pb-4">
+                <CreditCard className="text-primary" size={20}/> Método de Pago
+              </h3>
+              <div className="space-y-5 max-w-lg">
+                <div className="relative group">
+                  <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Número de Tarjeta</label>
+                  <div className="relative">
+                    <CreditCard className="absolute left-3 top-3.5 text-text-muted group-focus-within:text-primary transition-colors" size={18} />
+                    <input name="number" value={cardData.number} onChange={handleCardChange} maxLength="19" className="w-full pl-10 p-3 bg-background border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary font-mono tracking-wide transition-all" placeholder="0000 0000 0000 0000" />
+                  </div>
+                </div>
+                
+                <div>
+                   <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Titular de la Tarjeta</label>
+                   <input name="name" value={cardData.name} onChange={handleCardChange} className="w-full p-3 bg-background border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="Como figura en el plástico" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="relative group">
+                    <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Vencimiento</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-3.5 text-text-muted group-focus-within:text-primary transition-colors" size={18} />
+                      <input name="expiry" value={cardData.expiry} onChange={handleCardChange} maxLength="5" className="w-full pl-10 p-3 bg-background border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="MM/YY" />
+                    </div>
+                  </div>
+                  <div className="relative group">
+                    <label className="text-xs text-text-secondary uppercase font-bold ml-1 mb-1 block">Código de Seguridad</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-3.5 text-text-muted group-focus-within:text-primary transition-colors" size={18} />
+                      <input name="cvc" type="password" value={cardData.cvc} onChange={handleCardChange} maxLength="3" className="w-full pl-10 p-3 bg-background border border-ui-border rounded-xl text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all" placeholder="123" />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
+          {/* COLUMNA DERECHA: RESUMEN Y ACCIÓN */}
           <div className="lg:col-span-1">
-             <div className="bg-text-primary text-white p-6 sticky top-24 shadow-2xl">
-                <h2 className="font-black italic uppercase text-xl mb-6 border-b border-gray-700 pb-4">Resumen</h2>
-                <div className="space-y-2 mb-6 text-sm text-gray-400">
-                   <div className="flex justify-between"><span>Subtotal</span> <span className="text-white font-mono">${totalPrice}</span></div>
-                   <div className="flex justify-between"><span>Envío</span> <span className="text-primary font-bold">{shippingCost === 0 ? 'FREE' : `$${shippingCost}`}</span></div>
-                </div>
-                <div className="flex justify-between items-end mb-8 pt-4 border-t border-gray-700">
-                   <span className="font-bold uppercase">Total</span>
-                   <span className="text-3xl font-black italic text-primary">${finalTotal}</span>
-                </div>
-                <button onClick={handlePayment} disabled={loading} className="w-full bg-primary hover:bg-white hover:text-black text-black font-black uppercase tracking-widest py-4 transition-colors disabled:opacity-50">
-                   {loading ? 'Procesando...' : 'Confirmar Pedido'}
-                </button>
-             </div>
+            <div className="bg-surface rounded-2xl shadow-xl shadow-black/5 border border-ui-border p-6 sticky top-24 relative overflow-hidden">
+               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/20 via-primary to-primary/20"></div>
+               <h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">Confirmación</h2>
+               
+               <div className="mb-6 max-h-48 overflow-y-auto pr-2 space-y-3 border-b border-ui-border pb-6 custom-scrollbar">
+                 {cart.map(item => (
+                   <div key={item.id} className="flex justify-between items-start text-sm">
+                     <div className="flex gap-2">
+                        <span className="font-bold text-primary bg-primary/10 w-6 h-6 flex items-center justify-center rounded text-xs">{item.quantity}</span>
+                        <span className="text-text-secondary line-clamp-2">{item.name}</span>
+                     </div>
+                     <span className="font-mono text-text-primary font-medium ml-2">${(item.price * item.quantity).toFixed(2)}</span>
+                   </div>
+                 ))}
+               </div>
+
+               <div className="space-y-3 mb-6 pb-6 border-b border-ui-border">
+                  <div className="flex justify-between text-text-secondary text-sm"><span>Subtotal</span> <span className="font-mono">${totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></div>
+                  <div className="flex justify-between text-text-secondary text-sm">
+                    <span>Envío</span> 
+                    {shippingCost === 0 ? (
+                      <span className="text-primary font-bold text-xs bg-primary/10 px-2 py-0.5 rounded">GRATIS</span>
+                    ) : (
+                      <span className="font-mono">${shippingCost.toFixed(2)}</span>
+                    )}
+                  </div>
+               </div>
+               
+               <div className="flex justify-between items-end mb-8">
+                  <span className="text-lg font-bold text-text-primary">Total a Pagar</span>
+                  <div className="text-right">
+                    <span className="text-3xl font-bold text-primary tracking-tight block">${finalTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                    <span className="text-[10px] text-text-muted uppercase tracking-wider">Impuestos incluidos</span>
+                  </div>
+               </div>
+               
+               <button onClick={handlePayment} disabled={loading} className="w-full bg-primary hover:bg-primary-hover text-black py-4 rounded-xl font-bold text-lg shadow-lg shadow-primary/20 hover:shadow-primary/40 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-70 disabled:cursor-not-allowed group">
+                 {loading ? <Loader className="animate-spin" size={24}/> : (
+                   <>Confirmar Pago <CheckCircle size={20} className="group-hover:scale-110 transition-transform"/></>
+                 )}
+               </button>
+               
+               <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-text-muted opacity-70">
+                 <Lock size={10}/> 
+                 <span>Transacción encriptada de extremo a extremo</span>
+               </div>
+            </div>
           </div>
         </div>
       </div>
-      <AlertModal isOpen={alertModal.isOpen} onClose={() => setAlertModal({...alertModal, isOpen: false})} title={alertModal.title} message={alertModal.message} type={alertModal.type} />
+      <AlertModal 
+        isOpen={alertModal.isOpen} 
+        onClose={handleCloseAlert} 
+        title={alertModal.title} 
+        message={alertModal.message} 
+        type={alertModal.type} 
+      />
     </div>
   );
 };
