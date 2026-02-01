@@ -3,14 +3,14 @@ import api from '../config/api';
 export const orderDetailService = {
   /**
    * Crea un detalle de orden en el backend.
-   * CORRECCIÓN: El campo debe llamarse 'price' para coincidir con el schema del backend.
+   * Sincronizado con OrderDetailSchema (usa 'price' en lugar de 'unit_price').
    */
   create: async (detailData) => {
     const payload = {
       order_id: parseInt(detailData.order_id),
       product_id: parseInt(detailData.product_id),
       quantity: parseInt(detailData.quantity),
-      price: parseFloat(detailData.price) // Cambiado de unit_price a price
+      price: parseFloat(detailData.price) // Sincronizado con el backend
     };
     const response = await api.post('/order_details/', payload);
     return response.data;
