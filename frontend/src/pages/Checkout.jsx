@@ -1,172 +1,246 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, CreditCard, MapPin, Plus, Check, X, Calendar, Lock, Loader, AlertCircle, Bike } from 'lucide-react';
-import { useCartStore } from '../store/useCartStore';
-import { useAuthStore } from '../store/useAuthStore';
-import { addressService } from '../services/addressService';
-import { orderService } from '../services/orderService';
-import AlertModal from '../components/ui/AlertModal';
-import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import { useCartStore } from '../store/useCartStore'; 
+import { useAuthStore } from '../store/useAuthStore'; 
+import { orderService } from '../services/orderService'; // Usa createOrder
+import { billService } from '../services/billService'; // Usa create
+import { orderDetailService } from '../services/orderDetailService'; // Usa create
+import { addressService } from '../services/addressService'; // Usa create, getMyAddresses y delete
 
 const Checkout = () => {
-  const { cart, getTotalPrice, clearCart } = useCartStore();
-  const { user, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
-
-  const totalPrice = getTotalPrice();
-  const shippingCost = totalPrice > 500 ? 0 : 25;
-  const finalTotal = totalPrice + shippingCost;
-
-  const [addresses, setAddresses] = useState([]);
-  const [selectedAddressId, setSelectedAddressId] = useState(null);
-  const [isAddingAddress, setIsAddingAddress] = useState(false);
-  const [newAddress, setNewAddress] = useState({ street: '', number: '', city: '' });
-  const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvc: '' });
+  const { cart, getTotalPrice, clearCart } = useCartStore(); 
+  const { user } = useAuthStore(); 
+  
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'info' });
+  const [addresses, setAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState('new');
+  
+  const [formData, setFormData] = useState({
+    delivery_method: 3, // Domicilio fijo
+    payment_type: 2,    // Tarjeta de Débito fija
+    street: '',
+    number: '',
+    city: '',
+    cardNumber: '',
+    expiry: '',
+    cvv: ''
+  });
+
+  // Carga inicial de direcciones del usuario
+  const fetchAddresses = async () => {
+    if (user?.id_key) {
+      try {
+        const data = await addressService.getMyAddresses(user.id_key);
+        setAddresses(data);
+        if (data.length > 0) setSelectedAddressId(data[0].id_key);
+      } catch (error) {
+        console.error("Error al cargar direcciones:", error);
+      }
+    }
+  };
 
   useEffect(() => {
-    if (!isAuthenticated) navigate('/login');
-    if (cart.length === 0 && !success) navigate('/');
-  }, [isAuthenticated, cart, navigate, success]);
+    fetchAddresses();
+  }, [user]);
 
-  useEffect(() => {
-    if (isAuthenticated && user?.id_key) loadAddresses();
-  }, [isAuthenticated, user]);
-
-  const loadAddresses = async () => {
+  // Eliminar dirección guardada
+  const handleDeleteAddress = async (e, addressId) => {
+    e.stopPropagation();
+    if (!window.confirm("¿Eliminar esta dirección?")) return;
     try {
-      const data = await addressService.getMyAddresses(user.id_key);
-      const normalized = data.map(addr => ({ ...addr, id: addr.id || addr.id_key }));
-      setAddresses(normalized);
-      if (normalized.length > 0) { setSelectedAddressId(normalized[0].id); setIsAddingAddress(false); } 
-      else { setIsAddingAddress(true); }
-    } catch (error) { console.error("Error direcciones:", error); }
+      await addressService.delete(addressId);
+      setAddresses(addresses.filter(a => a.id_key !== addressId));
+      if (selectedAddressId === addressId) setSelectedAddressId('new');
+    } catch (error) {
+      alert("Error al eliminar la dirección.");
+    }
   };
 
-  const handleSaveNewAddress = async () => {
-    if (!newAddress.street || !newAddress.city) return showAlert('error', 'Faltan datos', 'Calle y Ciudad obligatorios.');
+  const handleCardNumberChange = (e) => {
+    const value = e.target.value.replace(/\D/g, ''); 
+    const formattedValue = value.replace(/(\d{4})(?=\d)/g, '$1 ');
+    setFormData({ ...formData, cardNumber: formattedValue });
+  };
+
+  const handleExpiryChange = (e) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 2) value = value.substring(0, 2) + '/' + value.substring(2, 4);
+    setFormData({ ...formData, expiry: value });
+  };
+
+  const handleProcessOrder = async (e) => {
+    e.preventDefault();
+    
+    if (!user || !user.id_key) return alert("Sesión inválida.");
+    if (cart.length === 0) return alert("El carrito está vacío.");
+
+    // Validación de dirección nueva
+    if (selectedAddressId === 'new' && (!formData.street || !formData.city)) {
+      return alert("Por favor, completa los datos de la nueva dirección.");
+    }
+    
+    // Validación de tarjeta
+    if (formData.cardNumber.replace(/\s/g, '').length < 16) {
+      return alert("Ingresa una tarjeta de débito válida.");
+    }
+
     setLoading(true);
+
     try {
-      const saved = await addressService.create({ ...newAddress, client_id: user.id_key });
-      await loadAddresses();
-      setSelectedAddressId(saved.id || saved.id_key);
-      setIsAddingAddress(false);
-      setNewAddress({ street: '', number: '', city: '' });
-    } catch (e) { showAlert('error', 'Error', 'No se pudo guardar la ruta.'); } 
-    finally { setLoading(false); }
+      const total = getTotalPrice(); 
+
+      // 1. Gestionar Dirección: Crear si es nueva
+      if (selectedAddressId === 'new') {
+        await addressService.create({
+          street: formData.street,
+          number: formData.number,
+          city: formData.city,
+          client_id: user.id_key 
+        });
+      }
+
+      // 2. Crear Factura
+      const createdBill = await billService.create({
+        bill_number: `FAC-${Date.now()}`,
+        date: new Date().toISOString().split('T')[0],
+        total: parseFloat(total),
+        payment_type: 2, 
+        client_id: user.id_key, 
+        discount: 0
+      });
+
+      // 3. Crear Orden
+      const createdOrder = await orderService.createOrder({
+        total: parseFloat(total),
+        delivery_method: 3, 
+        status: 1, 
+        client_id: user.id_key, 
+        bill_id: createdBill.id_key 
+      });
+
+      // 4. Registrar Detalles: Se usa 'price' para evitar error 500
+      for (const item of cart) {
+        await orderDetailService.create({
+          order_id: createdOrder.id_key,
+          product_id: item.id_key || item.id, 
+          quantity: item.quantity,
+          price: item.price // Sincronizado con el backend
+        });
+      }
+      
+      clearCart(); 
+      alert('¡Compra realizada con éxito!');
+      navigate('/profile'); 
+      
+    } catch (error) {
+      console.error("Error en checkout:", error);
+      alert(error.response?.data?.detail || "Error al procesar la compra.");
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const showAlert = (type, title, message) => setAlertModal({ isOpen: true, type, title, message });
-
-  const handlePayment = async () => {
-    let finalAddr = selectedAddressId;
-    setLoading(true);
-    try {
-       // Validaciones simplificadas para el ejemplo
-       if (isAddingAddress) {
-          const saved = await addressService.create({ ...newAddress, client_id: user.id_key });
-          finalAddr = saved.id || saved.id_key;
-       }
-       if (!finalAddr) { setLoading(false); return showAlert('warning', 'Sin Ruta', 'Selecciona dirección.'); }
-       
-       await orderService.createOrder({
-         client_id: user.id_key, total: finalTotal, status: "PENDING", payment_type: "CREDIT_CARD", address_id: finalAddr,
-         details: cart.map(i => ({ product_id: i.id_key, quantity: i.quantity, price: i.price }))
-       });
-       clearCart(); setSuccess(true);
-    } catch (e) { showAlert('error', 'Fallo Mecánico', 'Error al procesar el pedido.'); } 
-    finally { setLoading(false); }
-  };
-
-  if (success) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-surface text-center">
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-24 h-24 bg-primary text-white rounded-full flex items-center justify-center mb-6 shadow-xl">
-          <Bike size={48} />
-        </motion.div>
-        <h2 className="text-4xl font-black italic text-text-primary uppercase mb-2">¡Salida Confirmada!</h2>
-        <p className="text-text-secondary font-medium mb-8">Tu equipo está en preparación.</p>
-        <button onClick={() => navigate('/')} className="bg-black text-white px-8 py-3 font-bold uppercase tracking-widest hover:bg-primary transition-colors">Volver a Pista</button>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-surface py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6"><Link to="/cart" className="text-xs font-bold uppercase text-text-secondary hover:text-primary flex items-center gap-2"><ArrowLeft size={14}/> Volver al Garage</Link></div>
-        <h1 className="text-4xl font-black text-text-primary uppercase italic mb-8 border-b-4 border-primary inline-block">Confirmar Pedido</h1>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            {/* DIRECCION */}
-            <div className="bg-white border-2 border-ui-border p-6">
-              <div className="flex justify-between items-center mb-6 border-b-2 border-dashed border-ui-border pb-2">
-                 <h3 className="font-bold uppercase flex items-center gap-2"><MapPin className="text-primary"/> Punto de Entrega</h3>
-                 {!isAddingAddress && <button onClick={() => {setIsAddingAddress(true); setSelectedAddressId(null);}} className="text-xs font-bold text-primary hover:underline">Nueva Ruta</button>}
-              </div>
-              
-              {!isAddingAddress && addresses.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {addresses.map(addr => (
-                    <div key={addr.id} onClick={() => setSelectedAddressId(addr.id)} className={`p-4 border-2 cursor-pointer transition-all ${selectedAddressId === addr.id ? 'border-primary bg-orange-50' : 'border-ui-border hover:border-gray-400'}`}>
-                       <div className="font-bold text-text-primary uppercase text-sm">{addr.street} {addr.number}</div>
-                       <div className="text-xs text-text-secondary font-mono">{addr.city}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {(isAddingAddress || addresses.length === 0) && (
-                <div className="bg-surface p-4 border border-ui-border">
-                   <div className="grid grid-cols-2 gap-4">
-                      <input name="street" value={newAddress.street} onChange={(e) => setNewAddress({...newAddress, [e.target.name]: e.target.value})} placeholder="CALLE" className="col-span-2 p-2 border border-ui-border font-bold text-sm outline-none focus:border-primary"/>
-                      <input name="number" value={newAddress.number} onChange={(e) => setNewAddress({...newAddress, [e.target.name]: e.target.value})} placeholder="ALTURA" className="p-2 border border-ui-border font-bold text-sm outline-none focus:border-primary"/>
-                      <input name="city" value={newAddress.city} onChange={(e) => setNewAddress({...newAddress, [e.target.name]: e.target.value})} placeholder="CIUDAD" className="p-2 border border-ui-border font-bold text-sm outline-none focus:border-primary"/>
-                   </div>
-                   <div className="mt-4 text-right">
-                      {addresses.length > 0 && <button onClick={() => setIsAddingAddress(false)} className="mr-4 text-xs font-bold uppercase">Cancelar</button>}
-                      <button onClick={handleSaveNewAddress} className="bg-black text-white px-4 py-2 text-xs font-bold uppercase hover:bg-primary">Guardar</button>
-                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* PAGO */}
-            <div className="bg-white border-2 border-ui-border p-6">
-              <h3 className="font-bold uppercase flex items-center gap-2 mb-6 border-b-2 border-dashed border-ui-border pb-2"><CreditCard className="text-primary"/> Pago Seguro</h3>
-              <div className="space-y-4">
-                 <input placeholder="NUMERO DE TARJETA" className="w-full p-3 border-2 border-ui-border font-mono text-sm outline-none focus:border-primary bg-surface"/>
-                 <div className="grid grid-cols-2 gap-4">
-                    <input placeholder="MM/AA" className="p-3 border-2 border-ui-border font-mono text-sm outline-none focus:border-primary bg-surface"/>
-                    <input placeholder="CVC" className="p-3 border-2 border-ui-border font-mono text-sm outline-none focus:border-primary bg-surface"/>
-                 </div>
-                 <input placeholder="TITULAR" className="w-full p-3 border-2 border-ui-border font-bold text-sm outline-none focus:border-primary bg-surface"/>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-1">
-             <div className="bg-text-primary text-white p-6 sticky top-24 shadow-2xl">
-                <h2 className="font-black italic uppercase text-xl mb-6 border-b border-gray-700 pb-4">Resumen</h2>
-                <div className="space-y-2 mb-6 text-sm text-gray-400">
-                   <div className="flex justify-between"><span>Subtotal</span> <span className="text-white font-mono">${totalPrice}</span></div>
-                   <div className="flex justify-between"><span>Envío</span> <span className="text-primary font-bold">{shippingCost === 0 ? 'FREE' : `$${shippingCost}`}</span></div>
-                </div>
-                <div className="flex justify-between items-end mb-8 pt-4 border-t border-gray-700">
-                   <span className="font-bold uppercase">Total</span>
-                   <span className="text-3xl font-black italic text-primary">${finalTotal}</span>
-                </div>
-                <button onClick={handlePayment} disabled={loading} className="w-full bg-primary hover:bg-white hover:text-black text-black font-black uppercase tracking-widest py-4 transition-colors disabled:opacity-50">
-                   {loading ? 'Procesando...' : 'Confirmar Pedido'}
+    <div className="max-w-6xl mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-8">Finalizar Pedido</h1>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div className="lg:col-span-2 space-y-6">
+          <section className="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 className="text-xl font-semibold mb-4 border-b pb-2">Dirección de Envío (A Domicilio)</h2>
+            
+            {addresses.length > 0 && (
+              <div className="mb-6 space-y-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Selecciona una dirección:</label>
+                {addresses.map(addr => (
+                  <div 
+                    key={addr.id_key}
+                    onClick={() => setSelectedAddressId(addr.id_key)}
+                    className={`flex justify-between items-center p-3 border rounded-lg cursor-pointer transition-all ${
+                      selectedAddressId === addr.id_key ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className="text-sm">{addr.street} {addr.number}, {addr.city}</p>
+                    <button 
+                      onClick={(e) => handleDeleteAddress(e, addr.id_key)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))}
+                <button 
+                  onClick={() => setSelectedAddressId('new')}
+                  className={`mt-2 text-sm font-medium ${selectedAddressId === 'new' ? 'text-blue-600' : 'text-gray-500'}`}
+                >
+                  + Usar una nueva dirección
                 </button>
-             </div>
+              </div>
+            )}
+
+            {(selectedAddressId === 'new' || addresses.length === 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in bg-gray-50 p-4 rounded-lg">
+                <input 
+                  type="text" placeholder="Calle" className="p-2 border rounded bg-white"
+                  maxLength={200} value={formData.street} 
+                  onChange={e => setFormData({...formData, street: e.target.value})}
+                />
+                <input 
+                  type="text" placeholder="Número / Depto" className="p-2 border rounded bg-white"
+                  maxLength={20} value={formData.number} 
+                  onChange={e => setFormData({...formData, number: e.target.value})}
+                />
+                <input 
+                  type="text" placeholder="Ciudad" className="p-2 border rounded md:col-span-2 bg-white"
+                  maxLength={100} value={formData.city} 
+                  onChange={e => setFormData({...formData, city: e.target.value})}
+                />
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 className="text-xl font-semibold mb-4 border-b pb-2">Pago con Tarjeta de Débito</h2>
+            <div className="space-y-4">
+              <input 
+                type="text" placeholder="0000 0000 0000 0000" className="w-full p-2 border rounded"
+                maxLength={19} value={formData.cardNumber}
+                onChange={handleCardNumberChange}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <input 
+                  type="text" placeholder="MM/AA" className="p-2 border rounded"
+                  maxLength={5} value={formData.expiry}
+                  onChange={handleExpiryChange}
+                />
+                <input 
+                  type="password" placeholder="CVV" className="p-2 border rounded"
+                  maxLength={4} value={formData.cvv}
+                  onChange={e => setFormData({...formData, cvv: e.target.value.replace(/\D/g, '')})}
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="bg-gray-50 p-6 rounded-xl border h-fit sticky top-4">
+          <h2 className="text-xl font-bold mb-4">Resumen</h2>
+          <div className="border-t pt-4">
+            <div className="flex justify-between text-2xl font-bold text-blue-700">
+              <span>Total</span>
+              <span>${getTotalPrice().toFixed(2)}</span>
+            </div>
           </div>
+          <button 
+            onClick={handleProcessOrder}
+            disabled={loading || cart.length === 0}
+            className="w-full mt-6 bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+          >
+            {loading ? 'Procesando...' : 'Confirmar y Pagar'}
+          </button>
         </div>
       </div>
-      <AlertModal isOpen={alertModal.isOpen} onClose={() => setAlertModal({...alertModal, isOpen: false})} title={alertModal.title} message={alertModal.message} type={alertModal.type} />
     </div>
   );
 };
