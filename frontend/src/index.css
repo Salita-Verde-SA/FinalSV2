@@ -1,31 +1,52 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    /* Fondo claro y texto oscuro */
-    @apply bg-background text-text-primary font-sans antialiased selection:bg-primary/20 selection:text-primary;
-  }
-  
-  /* Inputs limpios estilo moderno */
-  input, select, textarea {
-    @apply bg-white border border-ui-border text-text-primary rounded-lg outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm;
+    @apply bg-brand-carbon text-brand-titanium antialiased;
+    background-image: theme('backgroundImage.carbon-pattern');
+    font-family: 'Inter', sans-serif;
   }
 }
 
-/* Scrollbar Minimalista */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+@layer components {
+  /* Layout de Grilla Pro */
+  .showroom-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2rem;
+    padding: 2rem;
+  }
 
-::-webkit-scrollbar-track {
-  @apply bg-transparent;
-}
+  /* Tarjeta Estilo Industrial */
+  .card-showroom {
+    @apply relative bg-surface-900 border-l-2 border-transparent p-8 transition-all duration-500 overflow-hidden;
+    clip-path: polygon(0 0, 100% 0, 100% 90%, 95% 100%, 0 100%);
+  }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full hover:bg-gray-400 transition-colors;
+  .card-showroom:hover {
+    @apply border-brand-accent bg-surface-800 shadow-glow;
+    transform: translateY(-5px);
+  }
+
+  /* Botón Racing con Ángulo */
+  .btn-racing {
+    @apply relative inline-block bg-brand-accent text-white px-10 py-4 font-black italic uppercase tracking-tighter transition-all duration-300;
+    clip-path: polygon(10% 0, 100% 0, 90% 100%, 0 100%);
+  }
+
+  .btn-racing:hover {
+    @apply bg-brand-accent-dark translate-x-2;
+  }
+
+  /* Imagen con profundidad */
+  .bike-display {
+    @apply relative z-10 w-full h-64 object-contain transition-transform duration-700;
+    filter: drop-shadow(0 20px 30px rgba(0,0,0,0.8));
+  }
+
+  .card-showroom:hover .bike-display {
+    @apply scale-110 -rotate-2;
+  }
 }

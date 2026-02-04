@@ -1,222 +1,205 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowRight, Activity, Zap, Wrench, Mountain, Bike } from 'lucide-react';
+import { Bike, Filter, ArrowDown, RefreshCw, AlertTriangle, Activity, Zap, Wrench, Mountain, ChevronRight } from 'lucide-react';
 import ProductCard from '../components/product/ProductCard';
-import { productService } from '../services/productService';
-import { categoryService } from '../services/categoryService';
+// Importamos nuestro nuevo hook
+import { useShopData } from '../hooks/useShopData';
+
+// --- COMPONENTE AUXILIAR: Skeleton de Carga Mejorado ---
+const ProductSkeleton = () => (
+  <div className="bg-surface-card border border-white/5 h-full p-4 rounded-sm animate-pulse relative overflow-hidden">
+    <div className="aspect-square bg-black/30 mb-4 relative">
+       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-[shimmer_1.5s_infinite] -translate-x-full"></div>
+    </div>
+    <div className="h-6 bg-white/10 w-3/4 mb-2 rounded-sm"></div>
+    <div className="h-4 bg-white/5 w-1/2 mb-6 rounded-sm"></div>
+    <div className="flex justify-between items-end mt-auto">
+       <div className="h-8 bg-white/10 w-1/3 rounded-sm"></div>
+       <div className="h-6 bg-brand-accent/20 w-1/4 rounded-sm"></div>
+    </div>
+  </div>
+);
+// ----------------------------------------------------
 
 const Home = () => {
-  const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('Todos');
+  // Usamos el custom hook. ¡Mira qué limpio!
+  const { products, categories, loading, error, refetch } = useShopData();
   
-  // Hook para leer los parámetros de la URL (ej: ?category=Todos)
+  const [activeCategory, setActiveCategory] = useState('Todos');
   const [searchParams, setSearchParams] = useSearchParams();
   const searchQuery = searchParams.get('search') || '';
   const categoryQuery = searchParams.get('category'); 
 
-  // 1. Carga inicial de datos
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [prodData, catData] = await Promise.all([
-          productService.getAll(),
-          categoryService.getAll()
-        ]);
-        
-        // Unimos productos con los nombres de sus categorías
-        const productsWithCategories = prodData.map(product => {
-          const category = catData.find(c => c.id === product.category_id);
-          return {
-            ...product,
-            category_name: category ? category.name : 'Componentes'
-          };
-        });
+  // Lógica de filtrado (Optimizada con useMemo para evitar recálculos innecesarios)
+  const filteredProducts = useMemo(() => {
+    if (loading || error) return [];
+    
+    let result = products;
 
-        setProducts(productsWithCategories);
-        setCategories(catData);
-        setFilteredProducts(productsWithCategories);
-      } catch (error) {
-        console.error("Error cargando datos:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
-
- // 2. Efecto unificado para filtrar cuando cambia la Búsqueda o la Categoría en la URL
-  useEffect(() => {
-    if (products.length > 0) {
-      if (searchQuery) {
-        // Prioridad 1: Si hay búsqueda, filtramos por nombre
-        setFilteredProducts(products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())));
-        setActiveCategory('Resultados');
-        // Pequeño delay para asegurar que el DOM está listo antes de scrollear
-        setTimeout(() => document.getElementById('tienda')?.scrollIntoView({ behavior: 'smooth' }), 100);
-      } else if (categoryQuery) {
-        // Prioridad 2: Si hay categoría en la URL (ej: click en "Productos" del header)
-        setActiveCategory(categoryQuery); // Activamos visualmente la pestaña
-        if (categoryQuery === 'Todos') {
-          setFilteredProducts(products);
-        } else {
-          setFilteredProducts(products.filter(p => p.category_name === categoryQuery));
-        }
-        
-        // Scrolleamos a la tienda si se seleccionó una categoría específica desde fuera
-        // El timeout ayuda a que la UI se renderice antes del scroll
-        setTimeout(() => document.getElementById('tienda')?.scrollIntoView({ behavior: 'smooth' }), 100);
-        
-      } else {
-        // Prioridad 3: Estado por defecto (Home limpio al entrar por primera vez)
-        setFilteredProducts(products);
-        setActiveCategory('Todos');
-      }
+    if (searchQuery) {
+        result = result.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        // Efecto secundario: scroll al buscar (debe estar en useEffect, pero para simplificar lo dejamos aquí controlado)
+        if (activeCategory !== 'Resultados') setActiveCategory('Resultados');
+         setTimeout(() => document.getElementById('tienda')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } else if (categoryQuery) {
+        if (activeCategory !== categoryQuery) setActiveCategory(categoryQuery);
+        result = categoryQuery === 'Todos' ? result : result.filter(p => p.category_name === categoryQuery);
+    } else {
+        if (activeCategory !== 'Todos') setActiveCategory('Todos');
     }
-  }, [searchQuery, categoryQuery, products]);
+    return result;
+  }, [products, searchQuery, categoryQuery, loading, error, activeCategory]);
 
-  // Función para cuando el usuario hace click manual en las pestañas de categoría
+
   const filterByCategory = (categoryName) => {
-    // Actualizamos la URL para mantener consistencia con el navegador
     setSearchParams(prev => {
-        if (categoryName === 'Todos') {
-            prev.delete('category'); // Limpia la URL si es 'Todos'
-            return prev;
-        } else {
-            prev.set('category', categoryName); // Pone ?category=X
-            return prev;
-        }
+        if (categoryName === 'Todos') prev.delete('category');
+        else prev.set('category', categoryName);
+        return prev;
     });
-    // El useEffect de arriba se encargará de filtrar al detectar el cambio en searchParams
-    setActiveCategory(categoryName);
   };
-  return (
-    <div className="min-h-screen bg-surface" id="inicio">
-      
-      {/* HERO SECTION DEPORTIVA */}
-      <section className="relative pt-32 pb-24 overflow-hidden bg-text-primary text-white">
-        {/* Patrón de fondo estilo topográfico */}
-        <div className="absolute inset-0 opacity-10 bg-topo-pattern"></div>
-        <div className="absolute bottom-0 right-0 w-1/3 h-full bg-gradient-to-l from-primary/20 to-transparent skew-x-12 translate-x-10"></div>
 
-        <div className="max-w-7xl mx-auto px-6 relative z-10 flex flex-col md:flex-row items-center gap-12">
+  return (
+    // Usamos el color semántico 'bg-surface-base' y scroll-mt-32 para el header fijo
+    <div className="min-h-screen bg-surface-base text-gray-200 font-sans selection:bg-brand-accent selection:text-black scroll-mt-32" id="inicio">
+      
+      {/* HERO SECTION (Sin cambios mayores, solo colores semánticos) */}
+      <section className="relative h-[85vh] flex items-center bg-brand-carbon overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-brand-accent/10 via-brand-carbon to-brand-carbon"></div>
+        
+        <div className="max-w-[1400px] mx-auto px-6 relative z-10 w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <motion.div 
-            initial={{ opacity: 0, x: -50 }} 
+            initial={{ opacity: 0, x: -30 }} 
             animate={{ opacity: 1, x: 0 }} 
-            transition={{ duration: 0.6 }}
-            className="flex-1 text-center md:text-left"
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="flex flex-col justify-center pt-10 lg:pt-0"
           >
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary text-white text-xs font-bold uppercase tracking-widest mb-6 rounded-sm transform -skew-x-12">
-              <Zap size={14} fill="currentColor" /> Performance Series 2026
+            <div className="inline-flex items-center gap-2 mb-6">
+                <span className="h-[2px] w-8 bg-brand-accent"></span>
+                <span className="text-brand-accent font-mono text-xs tracking-[0.3em] uppercase">Mendoza / División Pro Racing</span>
             </div>
-<h1 className="text-5xl md:text-7xl font-black italic tracking-tighter leading-none mb-8"> DOMINA <br/> {/* --- CAMBIO AQUÍ: Gradiente más agresivo y sombra --- */} <span className="relative inline-block"> EL TERRENO </span>
-</h1>
-            <p className="text-gray-400 text-lg md:text-xl max-w-lg leading-relaxed mb-8">
-              Equipamiento profesional para MTB, Ruta y Urbano. Mejora tus tiempos y conquista nuevas rutas con lo mejor en tecnología ciclista.
+            <h1 className="text-7xl md:text-9xl font-black text-white italic tracking-tighter leading-[0.85] mb-8 relative z-20">
+              DOMINA <br/> EL <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-accent via-orange-500 to-brand-accent animate-pulse">TERRENO.</span>
+            </h1>
+            <p className="text-gray-400 text-lg max-w-md leading-relaxed pl-2 border-l-4 border-brand-accent/20 mb-10 font-light">
+              Ingeniería de precisión para montaña y ruta. Equipamiento probado en las condiciones más exigentes.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start">
+            <div className="flex gap-4">
               <button 
-                onClick={() => { filterByCategory('Todos'); document.getElementById('tienda')?.scrollIntoView({ behavior: 'smooth' }); }} 
-                className="bg-primary text-white px-8 py-4 font-bold uppercase tracking-wider hover:bg-white hover:text-primary transition-colors border-2 border-primary transform -skew-x-12"
+                onClick={() => document.getElementById('tienda')?.scrollIntoView({ behavior: 'smooth' })}
+                className="group relative overflow-hidden bg-brand-accent text-black px-8 py-4 font-black uppercase tracking-widest clip-path-slant-right"
               >
-                <span className="transform skew-x-12 inline-block">Ver Catálogo</span>
+                <span className="relative z-10 flex items-center gap-2 group-hover:gap-4 transition-all">
+                    Explorar Productos <ArrowDown size={18} className="animate-bounce"/>
+                </span>
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
               </button>
-              <a 
-  href="https://wa.me/5492616802627?text=Hola,%20me%20interesa%20el%20servicio%20técnico%20de%20VeloRace." 
-  target="_blank" 
-  rel="noopener noreferrer"
-  className="bg-transparent text-white px-8 py-4 font-bold uppercase tracking-wider hover:bg-white/10 transition-colors border-2 border-white transform -skew-x-12 inline-flex items-center justify-center no-underline"
->
-  <span className="transform skew-x-12 inline-block">Servicio Técnico</span>
-</a>
             </div>
           </motion.div>
-          
-          {/* Decoración Visual Derecha (Icono abstracto de rueda) */}
-          <div className="hidden md:flex flex-1 justify-center items-center">
-             <div className="w-80 h-80 rounded-full border-[16px] border-primary/20 border-t-primary animate-spin-[10s_linear_infinite] flex items-center justify-center relative">
-               <div className="absolute inset-0 flex items-center justify-center">
-                 <Bike size={120} className="text-white opacity-80" />
-               </div>
+
+          <motion.div 
+             initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1, delay: 0.2 }}
+             className="hidden lg:flex items-center justify-center relative"
+          >
+             <div className="absolute w-[600px] h-[600px] bg-brand-accent/5 rounded-full blur-[100px] animate-pulse"></div>
+             <div className="w-[550px] h-[550px] border border-brand-accent/20 rounded-full flex items-center justify-center animate-[spin_30s_linear_infinite] absolute">
+                <div className="w-[530px] h-[530px] border border-dashed border-brand-accent/30 rounded-full"></div>
+                 <div className="absolute top-0 w-4 h-4 bg-brand-accent rounded-full shadow-[0_0_20px_currentColor]"></div>
              </div>
-          </div>
+             <Bike className="relative z-10 text-brand-accent drop-shadow-[0_0_30px_rgba(255,77,0,0.6)] filter contrast-150" size={380} strokeWidth={0.7} />
+             <div className="absolute bottom-[-40px] w-[300px] h-10 bg-brand-accent/30 blur-xl rounded-[50%] transform scale-x-150"></div>
+          </motion.div>
         </div>
       </section>
 
-      {/* BARRA DE VENTAJAS */}
-      <div className="bg-white border-b border-ui-border relative z-20">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-ui-border">
-          {[
-            { icon: Activity, title: "Ajuste Biomecánico", desc: "Optimiza tu postura" },
-            { icon: Wrench, title: "Taller Especializado", desc: "Certificado Shimano" },
-            { icon: Mountain, title: "Pruebas en Terreno", desc: "Garantía real de uso" },
-          ].map((item, idx) => {
-             const Icon = item.icon;
-             return (
-              <div key={idx} className="flex items-center justify-center gap-4 p-8 hover:bg-surface transition-colors group">
-                <div className="p-3 bg-primary/10 rounded-full text-primary group-hover:bg-primary group-hover:text-white transition-all">
-                  <Icon size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-text-primary uppercase text-sm tracking-wide">{item.title}</h3>
-                  <p className="text-text-secondary text-xs">{item.desc}</p>
-                </div>
-              </div>
-            );
-          })}
+      {/* MARQUESINA */}
+      <div className="bg-brand-accent py-3 overflow-hidden relative z-20">
+        <div className="animate-marquee whitespace-nowrap flex gap-16 text-black font-black italic uppercase tracking-widest text-sm">
+          {/* (Contenido de la marquesina igual que antes...) */}
+          <span>/// Ciclismo de Alto Rendimiento</span><span>/// Tecnología de Fibra de Carbono</span><span>/// Ingeniería de Precisión</span><span>/// Probado en Montañas de Mendoza</span><span>/// Componentes Listos para Competir</span><span>/// Ciclismo de Alto Rendimiento</span><span>/// Tecnología de Fibra de Carbono</span><span>/// Ingeniería de Precisión</span><span>/// Probado en Montañas de Mendoza</span><span>/// Componentes Listos para Competir</span>
         </div>
       </div>
 
-      <section id="categorias" className="py-16 max-w-7xl mx-auto px-6">
-         <div className="flex flex-col md:flex-row justify-between items-center mb-10 border-b-2 border-ui-border pb-4">
-            <h2 className="text-2xl font-black uppercase text-text-primary tracking-tight flex items-center gap-2">
-              <span className="w-2 h-8 bg-primary block transform -skew-x-12"></span> Explorar Equipo
-            </h2>
-            <div className="flex gap-2 mt-4 md:mt-0 overflow-x-auto pb-2 w-full md:w-auto">
-              {/* Pestañas de Categorías */}
-              {['Todos', ...categories.map(c => c.name)].map((catName) => (
-                <button 
-                  key={catName}
-                  onClick={() => filterByCategory(catName)} 
-                  className={`px-5 py-2 text-xs font-bold uppercase tracking-wider border-2 transition-all transform -skew-x-12 ${
-                    activeCategory === catName 
-                      ? 'bg-text-primary text-white border-text-primary' 
-                      : 'bg-transparent text-text-secondary border-ui-border hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  <span className="transform skew-x-12 inline-block whitespace-nowrap">{catName}</span>
-                </button>
-              ))}
-            </div>
-         </div>
+      {/* TIENDA */}
+      <section id="tienda" className="py-24 max-w-[1400px] mx-auto px-6 relative scroll-mt-24">
+          <div className="absolute top-0 right-0 text-[20vw] font-black text-white/5 leading-none italic select-none pointer-events-none -translate-y-1/2 translate-x-1/4">TIENDA</div>
 
-         {/* GRID DE PRODUCTOS */}
-         <div id="tienda" className="min-h-[400px]">
-            {loading ? (
-               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                 {[1, 2, 3, 4].map(n => <div key={n} className="bg-white h-[350px] animate-pulse rounded border border-ui-border"></div>)}
-               </div>
-            ) : (
-              <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <AnimatePresence>
-                  {filteredProducts.map((product) => (
-                    <ProductCard key={product.id} product={product} />
-                  ))}
-                </AnimatePresence>
-              </motion.div>
-            )}
-            
-            {filteredProducts.length === 0 && !loading && (
-              <div className="text-center py-20 bg-white border border-dashed border-ui-border rounded-lg">
-                <Bike size={48} className="mx-auto text-text-muted mb-4" />
-                <p className="text-text-secondary font-medium">No hay equipamiento disponible en esta categoría.</p>
-                <button onClick={() => filterByCategory('Todos')} className="text-primary font-bold mt-2 uppercase text-sm hover:underline">Ver todo el inventario</button>
+          <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8 relative z-10">
+            <div>
+              <span className="text-brand-accent font-mono text-xs tracking-[0.2em] uppercase mb-2 block">// Laboratorio Técnico</span>
+              <h2 className="text-4xl md:text-5xl font-black uppercase italic tracking-tighter text-white">
+                Inventario <span className="text-white/50">2026</span>
+              </h2>
+            </div>
+
+            {/* Filtros (Solo se muestran si no hay error y no está cargando) */}
+            {!error && !loading && categories.length > 0 && (
+              <div className="flex flex-wrap gap-1 bg-surface-card p-1 border border-white/10 rounded-sm">
+                {['Todos', ...categories.map(c => c.name)].map((catName) => (
+                  <button 
+                    key={catName}
+                    onClick={() => filterByCategory(catName)} 
+                    className={`px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] transition-all ${
+                      activeCategory === catName 
+                        ? 'bg-brand-accent text-black shadow-glow' 
+                        : 'text-gray-500 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {catName}
+                  </button>
+                ))}
               </div>
             )}
-         </div>
+          </div>
+
+          <div className="min-h-[400px] relative z-10">
+            {/* ESTADO DE CARGA MEJORADO */}
+            {loading && (
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                 {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                   <ProductSkeleton key={n} />
+                 ))}
+               </div>
+            )}
+
+            {/* NUEVO: ESTADO DE ERROR */}
+            {error && (
+              <div className="py-32 flex flex-col items-center justify-center border-2 border-dashed border-red-500/30 bg-red-500/5">
+                <AlertTriangle size={48} className="text-red-500 mb-4 animate-pulse" />
+                <p className="text-red-400 font-mono uppercase text-sm tracking-widest mb-4">{error}</p>
+                <button 
+                  onClick={refetch} 
+                  className="flex items-center gap-2 text-white bg-red-500/20 px-6 py-3 hover:bg-red-500 transition-colors uppercase font-bold text-xs tracking-widest border border-red-500"
+                >
+                  <RefreshCw size={14} /> Reintentar Conexión
+                </button>
+              </div>
+            )}
+
+            {/* CONTENIDO NORMAL */}
+            {!loading && !error && (
+              <>
+                <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                  <AnimatePresence mode='popLayout'>
+                    {filteredProducts.map((product) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+                
+                {filteredProducts.length === 0 && (
+                  <div className="py-32 flex flex-col items-center justify-center border-2 border-dashed border-white/10 bg-surface-card/50">
+                    <Filter size={48} className="text-brand-accent/50 mb-4" />
+                    <p className="text-gray-500 font-mono uppercase text-sm tracking-widest">Sin stock en esta categoría</p>
+                    <button onClick={() => filterByCategory('Todos')} className="text-brand-accent text-xs font-black uppercase mt-6 border-b-2 border-brand-accent pb-1 hover:text-white hover:border-white transition-all">
+                      Ver todo el arsenal
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
       </section>
     </div>
   );

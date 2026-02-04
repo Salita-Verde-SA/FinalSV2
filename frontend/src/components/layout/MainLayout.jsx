@@ -4,10 +4,10 @@ import Footer from './Footer';
 
 const MainLayout = ({ children }) => {
   return (
-    <div className="flex flex-col min-h-screen bg-surface font-sans text-text-primary selection:bg-primary selection:text-white">
+    <div className="flex flex-col min-h-screen bg-[#0f1115] font-sans text-gray-200 selection:bg-brand-accent selection:text-black">
       <Header />
-      {/* Ajuste para el header sticky */}
-      <main className="flex-grow pt-16">
+      {/* Ajuste de padding-top para compensar el header fixed */}
+      <main className="flex-grow pt-20">
         {children}
       </main>
       <Footer />
