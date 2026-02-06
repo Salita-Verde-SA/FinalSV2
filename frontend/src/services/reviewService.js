@@ -1,6 +1,7 @@
+
 import api from '../config/api';
 
-// Helper para normalizar reseñas
+// Función auxiliar para normalizar estructura de reseñas
 const normalizeReview = (review) => ({
   id: review.id_key,
   id_key: review.id_key,
@@ -13,16 +14,16 @@ const normalizeReview = (review) => ({
 });
 
 export const reviewService = {
-  // Obtener todas las reseñas
+  // Obtención de todas las reseñas registradas
   getAll: async () => {
     const response = await api.get('/reviews/');
     return response.data.map(normalizeReview);
   },
 
-  // Obtener reseñas de un producto específico
+  // Obtención de reseñas asociadas a un producto específico
   getByProduct: async (productId) => {
-    // El backend no tiene un endpoint específico por producto,
-    // así que filtramos del lado del cliente o usamos el endpoint general
+    // El backend no dispone de endpoint específico por producto,
+    // por lo que el filtrado se realiza en el cliente
     try {
       const response = await api.get('/reviews/');
       return response.data
@@ -34,7 +35,7 @@ export const reviewService = {
     }
   },
 
-  // Crear una nueva reseña
+  // Creación de una nueva reseña
   create: async (reviewData) => {
     const payload = {
       product_id: parseInt(reviewData.product_id),
@@ -50,7 +51,7 @@ export const reviewService = {
     };
   },
 
-  // Eliminar reseña
+  // Eliminación de una reseña por identificador
   delete: async (id) => {
     await api.delete(`/reviews/${id}`);
     return true;

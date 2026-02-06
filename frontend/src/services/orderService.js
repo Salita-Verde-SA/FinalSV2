@@ -26,7 +26,7 @@ export const orderService = {
 
   // Obtener orden por ID
   getById: async (id) => {
-    const response = await api.get(`/orders/${id}/`);
+    const response = await api.get(`/orders/${id}`);
     return response.data;
   },
 
@@ -49,7 +49,7 @@ export const orderService = {
     // Primero obtener la orden completa
     const order = await orderService.getById(id);
     // Actualizar solo el status
-    const response = await api.put(`/orders/${id}/`, {
+    const response = await api.put(`/orders/${id}`, {
       ...order,
       status: status
     });
