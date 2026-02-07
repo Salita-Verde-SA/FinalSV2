@@ -206,10 +206,10 @@ const Profile = () => {
                     <h2 className="text-xl font-black text-white uppercase italic mb-6">Historial de Carrera</h2>
                     <div className="space-y-4">
                       {orders.map((order) => (
-                        <div key={order.id_key} className="bg-[#16191e] border border-white/5 p-6 hover:border-brand-accent/50 transition-colors group">
+                        <div key={order.id_key || order.id} className="bg-[#16191e] border border-white/5 p-6 hover:border-brand-accent/50 transition-colors group">
                            <div className="flex justify-between mb-4 items-start">
                              <div>
-                               <span className="text-[10px] font-mono text-brand-accent mb-1 block">OP #{order.id_key}</span>
+                               <span className="text-[10px] font-mono text-brand-accent mb-1 block">OP #{getSafeId(order.id_key || order.id)}</span>
                                <p className="text-sm font-bold text-white flex items-center gap-2">
                                  <Calendar size={14} className="text-gray-500"/> {formatDate(order.date)}
                                </p>
