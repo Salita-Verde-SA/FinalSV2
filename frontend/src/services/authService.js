@@ -1,4 +1,3 @@
-
 import api from '../config/api';
 
 // Servicio de autenticación - Actualmente en desuso, utilizar useAuthStore como alternativa

@@ -1,4 +1,3 @@
-
 import api from '../config/api';
 
 // Función auxiliar para normalizar estructura de reseñas

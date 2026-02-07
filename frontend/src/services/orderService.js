@@ -1,58 +1,81 @@
 import api from '../config/api';
+import { orderDetailService } from './orderDetailService';
 
 export const orderService = {
-  // Obtener todas las órdenes
+  // Obtención de todas las órdenes registradas
   getAll: async () => {
     const response = await api.get('/orders/');
     return response.data;
   },
 
-  // Obtener pedidos del cliente autenticado (filtrar en frontend)
+  // Obtención de pedidos del cliente autenticado (filtrado en frontend)
   getMyOrders: async (clientId) => {
     const response = await api.get('/orders/');
-    // Filtrar órdenes del cliente en el frontend
-    return response.data
-      .filter(order => order.client_id === clientId)
-      .map(order => ({
-        id: order.id_key,
-        date: order.date,
-        total: parseFloat(order.total),
-        status: order.status,
-        delivery_method: order.delivery_method,
-        client_id: order.client_id,
-        bill_id: order.bill_id
-      }));
+    // Filtrado de órdenes por cliente realizado en el frontend
+    const filteredOrders = response.data.filter(order => order.client_id === clientId);
+    
+    // Cargar detalles de cada orden
+    const ordersWithDetails = await Promise.all(
+      filteredOrders.map(async (order) => {
+        const orderId = order.id_key || order.id;
+        let details = [];
+        try {
+          details = await orderDetailService.getByOrderId(orderId);
+        } catch (err) {
+          console.error(`Error cargando detalles de orden ${orderId}:`, err);
+        }
+        return {
+          id: orderId,
+          date: order.date,
+          total: parseFloat(order.total),
+          status: order.status,
+          delivery_method: order.delivery_method,
+          client_id: order.client_id,
+          bill_id: order.bill_id,
+          details: details
+        };
+      })
+    );
+    
+    return ordersWithDetails;
   },
 
-  // Obtener orden por ID
+  // Obtención de orden por identificador
   getById: async (id) => {
     const response = await api.get(`/orders/${id}`);
     return response.data;
   },
 
-  // Crear orden
+  // Creación de orden según esquema definido por el backend
   createOrder: async (orderData) => {
     const payload = {
       date: orderData.date || new Date().toISOString(),
       total: parseFloat(orderData.total),
-      delivery_method: orderData.delivery_method || 3,
-      status: orderData.status || 1,
-      client_id: orderData.client_id,
-      bill_id: orderData.bill_id
+      delivery_method: orderData.delivery_method || 3, // HOME_DELIVERY = 3
+      status: orderData.status || 1, // PENDING = 1
+      client_id: parseInt(orderData.client_id),
+      bill_id: parseInt(orderData.bill_id)
     };
     const response = await api.post('/orders/', payload);
     return response.data;
   },
 
-  // Actualizar estado de orden
-  updateStatus: async (id, status) => {
-    // Primero obtener la orden completa
+  // Actualización del estado de una orden existente
+  updateStatus: async (id, newStatus) => {
+    // Se obtiene la orden completa antes de actualizar
     const order = await orderService.getById(id);
-    // Actualizar solo el status
-    const response = await api.put(`/orders/${id}`, {
-      ...order,
-      status: status
-    });
+    
+    // Construir payload con solo los campos requeridos por el schema
+    const payload = {
+      date: order.date,
+      total: parseFloat(order.total),
+      delivery_method: order.delivery_method,
+      status: newStatus,
+      client_id: parseInt(order.client_id),
+      bill_id: parseInt(order.bill_id)
+    };
+    
+    const response = await api.put(`/orders/${id}`, payload);
     return response.data;
   }
 };

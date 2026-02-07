@@ -1,4 +1,3 @@
-
 import api from '../config/api';
 
 // Función auxiliar para generar número de factura único

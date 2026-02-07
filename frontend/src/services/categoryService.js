@@ -1,4 +1,3 @@
-
 import api from '../config/api';
 
 // Función auxiliar para normalizar categorías del backend (id_key e id como alias)
