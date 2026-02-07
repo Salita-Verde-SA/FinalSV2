@@ -32,7 +32,27 @@ const Profile = () => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', type: 'info' });
 
   const showAlert = (type, title, message) => setAlertModal({ isOpen: true, type, title, message });
-
+  
+  // Helper para mostrar el estado como texto legible
+  const getStatusText = (status) => {
+    switch (status) {
+      case 1:
+      case '1':
+        return 'PENDIENTE';
+      case 2:
+      case '2':
+        return 'EN PROGRESO';
+      case 3:
+      case '3':
+        return 'ENTREGADO';
+      case 4:
+      case '4':
+        return 'CANCELADO';
+      default:
+        return String(status);
+    }
+  };
+  
   const fieldLabels = {
     name: 'Nombre',
     lastname: 'Apellido',
@@ -189,17 +209,17 @@ const Profile = () => {
                         <div key={order.id_key} className="bg-[#16191e] border border-white/5 p-6 hover:border-brand-accent/50 transition-colors group">
                            <div className="flex justify-between mb-4 items-start">
                              <div>
-                               <span className="text-[10px] font-mono text-brand-accent mb-1 block">OP #{getSafeId(order.id_key)}</span>
+                               <span className="text-[10px] font-mono text-brand-accent mb-1 block">OP #{order.id_key}</span>
                                <p className="text-sm font-bold text-white flex items-center gap-2">
-                                 <Calendar size={14} className="text-gray-500"/> {formatDate(order.created_at)}
+                                 <Calendar size={14} className="text-gray-500"/> {formatDate(order.date)}
                                </p>
                              </div>
                              <span className="text-[9px] font-black uppercase px-2 py-1 bg-white/5 border border-white/10 text-white/60">
-                               {order.status}
+                               {getStatusText(order.status)}
                              </span>
                            </div>
                            <div className="text-xs text-gray-500 border-t border-white/5 pt-3 mt-3 space-y-1 font-mono uppercase">
-                             {order.items?.map((item, i) => (
+                             {order.details?.map((item, i) => (
                                <div key={i} className="flex justify-between">
                                  <span>{item.quantity}x {item.product_name}</span>
                                </div>
