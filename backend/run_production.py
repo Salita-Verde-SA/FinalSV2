@@ -18,7 +18,7 @@ DEFAULT_WORKERS = min(max(2 * CPU_COUNT + 1, 4), 8)  # Between 4-8 workers
 # Configuration from environment variables
 WORKERS = int(os.getenv('UVICORN_WORKERS', DEFAULT_WORKERS))
 HOST = os.getenv('API_HOST', '0.0.0.0')
-PORT = int(os.getenv('API_PORT', '8000'))
+PORT = int(os.getenv('PORT', '8000'))
 RELOAD = os.getenv('RELOAD', 'false').lower() == 'true'
 
 # Performance tuning
@@ -28,14 +28,6 @@ LIMIT_CONCURRENCY = int(os.getenv('LIMIT_CONCURRENCY', '1000'))
 LIMIT_MAX_REQUESTS = int(os.getenv('LIMIT_MAX_REQUESTS', '10000'))
 
 if __name__ == "__main__":
-    # Create database tables before starting server
-    print("📦 Creating database tables...")
-    try:
-        create_tables()
-        print("✅ Database tables created successfully\n")
-    except Exception as e:
-        print(f"⚠️  Database tables may already exist or error occurred: {e}\n")
-
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║  🚀 FastAPI E-commerce - High Performance Production Mode  ║

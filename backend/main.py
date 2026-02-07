@@ -117,6 +117,13 @@ def create_fastapi_app() -> FastAPI:
         else:
             logger.warning("⚠️  Redis cache is NOT available - running without cache")
 
+        # Create database tables if they don't exist
+        try:
+            create_tables()
+            logger.info("✅ Database tables created or already exist")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to create database tables: {e} - continuing without creating tables")
+
     # Shutdown event: Graceful shutdown
     @fastapi_app.on_event("shutdown")
     async def shutdown_event():
@@ -143,13 +150,14 @@ def create_fastapi_app() -> FastAPI:
 
 
 def run_app(fastapi_app: FastAPI):
-    uvicorn.run(fastapi_app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get('PORT', 8000))
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+
+
+# Create FastAPI application instance
+app = create_fastapi_app()
 
 
 if __name__ == "__main__":
-    # Create database tables on startup
-    create_tables()
-
-    # Create and run FastAPI application
-    app = create_fastapi_app()
+    # Run FastAPI application
     run_app(app)
